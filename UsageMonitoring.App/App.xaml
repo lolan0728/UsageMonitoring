@@ -1,0 +1,341 @@
+<Application x:Class="UsageMonitoring.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tb="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Wpf">
+    <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+        <Color x:Key="HudBlueColor">#4DF9FF</Color>
+        <Color x:Key="HudBlueSoftColor">#8BE8FF</Color>
+        <SolidColorBrush x:Key="HudBlueBrush" Color="{StaticResource HudBlueColor}" />
+        <SolidColorBrush x:Key="HudBlueSoftBrush" Color="{StaticResource HudBlueSoftColor}" />
+        <SolidColorBrush x:Key="HudSurfaceBrush" Color="#D0040911" />
+        <SolidColorBrush x:Key="HudSurfaceAltBrush" Color="#A008101A" />
+        <SolidColorBrush x:Key="HudBorderBrush" Color="#664DF9FF" />
+        <SolidColorBrush x:Key="HudMutedBrush" Color="#94BFD9E8" />
+        <SolidColorBrush x:Key="QuotaBrightGreenBrush" Color="#22F28A" />
+        <SolidColorBrush x:Key="QuotaBrightGreenTrackBrush" Color="#214C3A" />
+        <SolidColorBrush x:Key="QuotaDeepGreenBrush" Color="#169B63" />
+        <SolidColorBrush x:Key="QuotaDeepGreenTrackBrush" Color="#1D4134" />
+        <SolidColorBrush x:Key="PillSurfaceBrush" Color="#D2434345" />
+        <SolidColorBrush x:Key="PillLabelBrush" Color="#EAF6EE" />
+        <SolidColorBrush x:Key="PillSubtleBrush" Color="#BBC6C8CB" />
+
+        <LinearGradientBrush x:Key="HudChromeBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Offset="0" Color="#E0030810" />
+            <GradientStop Offset="0.45" Color="#D0050B14" />
+            <GradientStop Offset="1" Color="#D0081320" />
+        </LinearGradientBrush>
+
+        <DrawingBrush x:Key="HudGridBrush"
+                      Viewport="0,0,22,22"
+                      ViewportUnits="Absolute"
+                      TileMode="Tile"
+                      Stretch="None">
+            <DrawingBrush.Drawing>
+                <GeometryDrawing Brush="Transparent">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#0A3FC7FF" Thickness="0.7" />
+                    </GeometryDrawing.Pen>
+                    <GeometryDrawing.Geometry>
+                        <GeometryGroup>
+                            <LineGeometry StartPoint="0,0" EndPoint="22,0" />
+                            <LineGeometry StartPoint="0,0" EndPoint="0,22" />
+                        </GeometryGroup>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <DrawingBrush x:Key="HudScanlineBrush"
+                      Viewport="0,0,4,12"
+                      ViewportUnits="Absolute"
+                      TileMode="Tile"
+                      Stretch="None">
+            <DrawingBrush.Drawing>
+                <GeometryDrawing Brush="#08D6FFFF" Geometry="M0,0 L4,0 4,1 0,1 Z" />
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <Style x:Key="HudActionButton" TargetType="Button">
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Foreground" Value="#ECFAFF" />
+            <Setter Property="Background" Value="#0E141D" />
+            <Setter Property="BorderBrush" Value="{StaticResource HudBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontFamily" Value="Bahnschrift SemiCondensed" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border Margin="2,2,0,0"
+                                    Background="#33000000"
+                                    BorderBrush="#14000000"
+                                    BorderThickness="1" />
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <Grid>
+                                    <Border Height="2"
+                                            VerticalAlignment="Top"
+                                            Background="#12FFFFFF" />
+                                    <Border Width="2"
+                                            HorizontalAlignment="Left"
+                                            Background="#12FFFFFF" />
+                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,0,1" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#102A33" />
+                    <Setter Property="BorderBrush" Value="#8BE8FF" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#143847" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.6" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="HudTinyButton" TargetType="Button" BasedOn="{StaticResource HudActionButton}">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="HudIconButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Foreground" Value="#EEF3F1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="0,-1,0,0" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#22F28A" />
+                    <Setter Property="Background" Value="#10000000" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Foreground" Value="#A9EFD0" />
+                    <Setter Property="Background" Value="#18000000" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <SolidColorBrush x:Key="TrayMenuSurfaceBrush" Color="#171B20" />
+        <SolidColorBrush x:Key="TrayMenuBorderBrush" Color="#242B33" />
+        <SolidColorBrush x:Key="TrayMenuHoverBrush" Color="#232932" />
+        <SolidColorBrush x:Key="TrayMenuTextBrush" Color="#F3F5F7" />
+        <SolidColorBrush x:Key="TrayMenuIconBrush" Color="#F3F5F7" />
+        <SolidColorBrush x:Key="TrayMenuSeparatorBrush" Color="#313840" />
+
+        <Style x:Key="TrayContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="HasDropShadow" Value="False" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinWidth" Value="148" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{StaticResource TrayMenuSurfaceBrush}"
+                                BorderBrush="{StaticResource TrayMenuBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="18"
+                                Padding="8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="22"
+                                                  Direction="270"
+                                                  ShadowDepth="6"
+                                                  Opacity="0.34"
+                                                  Color="#000000" />
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TrayMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{StaticResource TrayMenuTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,9" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter ContentSource="Icon"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                                <ContentPresenter Grid.Column="2"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource TrayMenuHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TrayMenuSeparatorStyle" TargetType="Separator">
+            <Setter Property="Margin" Value="10,7" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1"
+                                Background="{StaticResource TrayMenuSeparatorBrush}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <BitmapImage x:Key="TrayIconArtwork"
+                     UriSource="pack://application:,,,/Assets/tray-icon.png" />
+
+        <tb:TaskbarIcon x:Key="TrayIcon"
+                        ToolTipText="Usage Monitoring"
+                        MenuActivation="LeftOrRightClick"
+                        TrayLeftMouseUp="TrayIcon_OnTrayLeftMouseUp">
+            <tb:TaskbarIcon.IconSource>
+                <tb:GeneratedIconSource Text=""
+                                        Size="64"
+                                        Foreground="Transparent"
+                                        Background="Transparent"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="0"
+                                        BackgroundSource="{StaticResource TrayIconArtwork}" />
+            </tb:TaskbarIcon.IconSource>
+            <tb:TaskbarIcon.ContextMenu>
+                <ContextMenu Style="{StaticResource TrayContextMenuStyle}"
+                             Opened="TrayContextMenu_OnOpened">
+                    <MenuItem Header="Show Window"
+                              Tag="ShowItem"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Click="ShowPanelMenuItem_OnClick">
+                        <MenuItem.Icon>
+                            <Grid Width="12" Height="12">
+                                <Rectangle Width="10"
+                                           Height="7"
+                                           RadiusX="1.2"
+                                           RadiusY="1.2"
+                                           Stroke="{StaticResource TrayMenuIconBrush}"
+                                           StrokeThickness="1.4" />
+                            </Grid>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Hide Window"
+                              Tag="HideItem"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Click="HidePanelMenuItem_OnClick">
+                        <MenuItem.Icon>
+                            <Grid Width="12" Height="12">
+                                <Line X1="2"
+                                      Y1="6"
+                                      X2="10"
+                                      Y2="6"
+                                      Stroke="{StaticResource TrayMenuIconBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" />
+                            </Grid>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Locate Codex"
+                              Tag="LocateCodexItem"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Click="LocateCodexMenuItem_OnClick">
+                        <MenuItem.Icon>
+                            <Grid Width="12" Height="12">
+                                <Path Data="M2,9.8 L2,4.2 4.1,2.1 10,2.1 10,9.8 Z"
+                                      Stroke="{StaticResource TrayMenuIconBrush}"
+                                      StrokeThickness="1.3"
+                                      StrokeLineJoin="Round" />
+                                <Line X1="8.6"
+                                      Y1="8.6"
+                                      X2="11"
+                                      Y2="11"
+                                      Stroke="{StaticResource TrayMenuIconBrush}"
+                                      StrokeThickness="1.5"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" />
+                            </Grid>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator Style="{StaticResource TrayMenuSeparatorStyle}" />
+                    <MenuItem Header="Quit"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Click="ExitMenuItem_OnClick">
+                        <MenuItem.Icon>
+                            <Grid Width="12" Height="12">
+                                <Line X1="2.2"
+                                      Y1="2.2"
+                                      X2="9.8"
+                                      Y2="9.8"
+                                      Stroke="{StaticResource TrayMenuIconBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" />
+                                <Line X1="9.8"
+                                      Y1="2.2"
+                                      X2="2.2"
+                                      Y2="9.8"
+                                      Stroke="{StaticResource TrayMenuIconBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" />
+                            </Grid>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                </ContextMenu>
+            </tb:TaskbarIcon.ContextMenu>
+        </tb:TaskbarIcon>
+    </Application.Resources>
+</Application>

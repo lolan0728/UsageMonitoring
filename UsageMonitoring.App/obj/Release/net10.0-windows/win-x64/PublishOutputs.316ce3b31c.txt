@@ -1,0 +1,1 @@
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\publish\win-x64-single-file\UsageMonitoring.App.exe
