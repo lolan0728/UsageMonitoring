@@ -1,0 +1,5 @@
+.DS_Store
+
+UsageMonitoring.Mac/.build/
+UsageMonitoring.Mac/.swiftpm/
+UsageMonitoring.Mac/dist/
