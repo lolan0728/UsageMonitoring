@@ -33,15 +33,17 @@ struct UsageMonitoringMacApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarContentView(store: store, windowController: windowController)
-        } label: {
-            DoubleRingIconView(isLive: store.isQuotaLive)
-                .frame(width: 18, height: 18)
-        }
-
         Settings {
             EmptyView()
+        }
+        .commands {
+            // Remove default SwiftUI macOS menus (View / Window / Help).
+            CommandGroup(replacing: .sidebar) {}
+            CommandGroup(replacing: .toolbar) {}
+            CommandGroup(replacing: .windowSize) {}
+            CommandGroup(replacing: .windowArrangement) {}
+            CommandGroup(replacing: .windowList) {}
+            CommandGroup(replacing: .help) {}
         }
     }
 }
