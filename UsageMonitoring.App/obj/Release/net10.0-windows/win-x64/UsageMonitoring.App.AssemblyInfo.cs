@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UsageMonitoring.App")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+0aacde07e14404a6d894ce247acc6bb8128d764f")]
 [assembly: System.Reflection.AssemblyProductAttribute("UsageMonitoring.App")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UsageMonitoring.App")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]

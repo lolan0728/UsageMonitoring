@@ -1,0 +1,9 @@
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\UsageMonitoring.App.exe
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\UsageMonitoring.App.dll
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\UsageMonitoring.App.deps.json
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\UsageMonitoring.App.runtimeconfig.json
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\UsageMonitoring.App.pdb
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\CommunityToolkit.Mvvm.dll
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\H.GeneratedIcons.System.Drawing.dll
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\H.NotifyIcon.dll
+C:\Users\vampi\source\Usage Monitoring\publish\win-x64-fd\H.NotifyIcon.Wpf.dll

@@ -32,6 +32,8 @@ public partial class MainViewModel : ObservableObject
         AlwaysOnTop = settings.AlwaysOnTop;
         LaunchOnStartup = autostartService.IsEnabled() || settings.LaunchOnStartup;
         ClickThrough = settings.ClickThrough;
+        UseSystemProxyForCodex = settings.UseSystemProxyForCodex;
+        _codexAppServerClient.UseSystemProxy = UseSystemProxyForCodex;
         RefreshEffectiveAlwaysOnTop();
         CodexExecutablePath = settings.CodexExecutablePath ?? "Auto detect";
         ConnectionStatusText = "Waiting for Codex app-server";
@@ -67,6 +69,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool clickThrough;
+
+    [ObservableProperty]
+    private bool useSystemProxyForCodex;
 
     [ObservableProperty]
     private string connectionStatusText;
@@ -117,6 +122,9 @@ public partial class MainViewModel : ObservableObject
             CodexExecutablePath = _codexAppServerClient.ExecutablePath;
         }
     }
+
+    public Task ReconnectAsync(CancellationToken cancellationToken = default) =>
+        _codexAppServerClient.RestartAsync(cancellationToken);
 
     [RelayCommand]
     private void ToggleSettings() => IsSettingsOpen = !IsSettingsOpen;
@@ -176,6 +184,19 @@ public partial class MainViewModel : ObservableObject
 
         _codexAppServerClient.PreferredExecutablePath = value;
         PersistSettings();
+    }
+
+    partial void OnUseSystemProxyForCodexChanged(bool value)
+    {
+        _codexAppServerClient.UseSystemProxy = value;
+
+        if (_suspendPersistence)
+        {
+            return;
+        }
+
+        PersistSettings();
+        _ = ReconnectAsync();
     }
 
     private async void OnBucketsUpdated(object? sender, IReadOnlyList<RateLimitBucket> buckets)
@@ -288,6 +309,7 @@ public partial class MainViewModel : ObservableObject
         _settings.AlwaysOnTop = AlwaysOnTop;
         _settings.LaunchOnStartup = LaunchOnStartup;
         _settings.ClickThrough = ClickThrough;
+        _settings.UseSystemProxyForCodex = UseSystemProxyForCodex;
         _settings.CodexExecutablePath = CodexExecutablePath;
         _settingsService.Save(_settings);
     }

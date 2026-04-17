@@ -297,6 +297,50 @@
                     </Grid>
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="Disable System Proxy"
+                      Tag="ToggleSystemProxyItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="ToggleSystemProxyMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Path Data="M1.8,7.6 C2.4,4.4 4.6,2.3 7.2,2.3 C9.3,2.3 10.5,3.4 10.9,5.1"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round" />
+                        <Line X1="2.1"
+                              Y1="9.2"
+                              X2="9.9"
+                              Y2="2.8"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.4"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Reconnect Codex"
+                      Tag="ReconnectCodexItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="ReconnectCodexMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Path Data="M9.8,4.7 C9.1,3.1 7.6,2 5.9,2 C3.7,2 2,3.8 2,6 C2,8.2 3.7,10 5.9,10 C7.3,10 8.6,9.3 9.3,8.1"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round" />
+                        <Polyline Points="8.3,3.2 10,3.2 10,4.9"
+                                  Stroke="{StaticResource TrayMenuIconBrush}"
+                                  StrokeThickness="1.2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
             <MenuItem Header="Enable Click-through"
                       Tag="ToggleClickThroughItem"
                       Style="{StaticResource TrayMenuItemStyle}"

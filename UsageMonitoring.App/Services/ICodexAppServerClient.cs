@@ -16,7 +16,11 @@ public interface ICodexAppServerClient : IAsyncDisposable
 
     string? PreferredExecutablePath { get; set; }
 
+    bool UseSystemProxy { get; set; }
+
     Task StartAsync(CancellationToken cancellationToken = default);
+
+    Task RestartAsync(CancellationToken cancellationToken = default);
 
     Task RefreshRateLimitsAsync(CancellationToken cancellationToken = default);
 }

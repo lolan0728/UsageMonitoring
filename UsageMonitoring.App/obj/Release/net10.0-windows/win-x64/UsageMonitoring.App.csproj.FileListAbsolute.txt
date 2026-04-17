@@ -1,3 +1,12 @@
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.csproj.AssemblyReference.cache
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\App.baml
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\MainWindow.g.cs
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\App.g.cs
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\GeneratedInternalTypeHelper.g.cs
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App_MarkupCompile.cache
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App_MarkupCompile.lref
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.dll
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\refint\UsageMonitoring.App.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\UsageMonitoring.App.exe
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\UsageMonitoring.App.deps.json
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\UsageMonitoring.App.runtimeconfig.json
@@ -401,13 +410,6 @@ C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-w
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\zh-Hant\UIAutomationProvider.resources.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\zh-Hant\UIAutomationTypes.resources.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\zh-Hant\WindowsBase.resources.dll
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.csproj.AssemblyReference.cache
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\App.baml
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\MainWindow.g.cs
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\App.g.cs
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\GeneratedInternalTypeHelper.g.cs
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App_MarkupCompile.cache
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App_MarkupCompile.lref
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\MainWindow.baml
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.g.resources
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.GeneratedMSBuildEditorConfig.editorconfig
@@ -415,7 +417,5 @@ C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-w
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.AssemblyInfo.cs
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.csproj.CoreCompileInputs.cache
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMon.41404779.Up2Date
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.dll
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\refint\UsageMonitoring.App.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.genruntimeconfig.cache
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\ref\UsageMonitoring.App.dll

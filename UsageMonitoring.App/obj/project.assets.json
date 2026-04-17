@@ -65,84 +65,6 @@
         "frameworkReferences": [
           "Microsoft.WindowsDesktop.App.WPF"
         ]
-      },
-      "Microsoft.NET.ILLink.Tasks/10.0.5": {
-        "type": "package",
-        "build": {
-          "build/Microsoft.NET.ILLink.Tasks.props": {}
-        }
-      }
-    },
-    "net10.0-windows7.0/win-x64": {
-      "CommunityToolkit.Mvvm/8.4.0": {
-        "type": "package",
-        "compile": {
-          "lib/net8.0/CommunityToolkit.Mvvm.dll": {
-            "related": ".pdb;.xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/CommunityToolkit.Mvvm.dll": {
-            "related": ".pdb;.xml"
-          }
-        },
-        "build": {
-          "buildTransitive/CommunityToolkit.Mvvm.targets": {}
-        }
-      },
-      "H.GeneratedIcons.System.Drawing/2.4.1": {
-        "type": "package",
-        "compile": {
-          "lib/net10.0/H.GeneratedIcons.System.Drawing.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net10.0/H.GeneratedIcons.System.Drawing.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "H.NotifyIcon/2.4.1": {
-        "type": "package",
-        "dependencies": {
-          "H.GeneratedIcons.System.Drawing": "2.4.1"
-        },
-        "compile": {
-          "lib/net10.0/H.NotifyIcon.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net10.0/H.NotifyIcon.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "H.NotifyIcon.Wpf/2.4.1": {
-        "type": "package",
-        "dependencies": {
-          "H.NotifyIcon": "2.4.1"
-        },
-        "compile": {
-          "lib/net10.0-windows7.0/H.NotifyIcon.Wpf.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net10.0-windows7.0/H.NotifyIcon.Wpf.dll": {
-            "related": ".xml"
-          }
-        },
-        "frameworkReferences": [
-          "Microsoft.WindowsDesktop.App.WPF"
-        ]
-      },
-      "Microsoft.NET.ILLink.Tasks/10.0.5": {
-        "type": "package",
-        "build": {
-          "build/Microsoft.NET.ILLink.Tasks.props": {}
-        }
       }
     }
   },
@@ -245,63 +167,12 @@
         "nuget_icon.png",
         "tools/VisualStudioToolsManifest.xml"
       ]
-    },
-    "Microsoft.NET.ILLink.Tasks/10.0.5": {
-      "sha512": "A+5ZuQ0f449tM+MQrhf6R9ZX7lYpjk/ODEwLYKrnF6111rtARx8fVsm4YznUnQiKnnXfaXNBqgxmil6RW3L3SA==",
-      "type": "package",
-      "path": "microsoft.net.illink.tasks/10.0.5",
-      "hasTools": true,
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "Sdk/Sdk.props",
-        "THIRD-PARTY-NOTICES.TXT",
-        "analyzers/dotnet/cs/ILLink.CodeFixProvider.dll",
-        "analyzers/dotnet/cs/ILLink.RoslynAnalyzer.dll",
-        "build/Microsoft.NET.ILLink.Analyzers.props",
-        "build/Microsoft.NET.ILLink.Tasks.props",
-        "build/Microsoft.NET.ILLink.targets",
-        "microsoft.net.illink.tasks.10.0.5.nupkg.sha512",
-        "microsoft.net.illink.tasks.nuspec",
-        "tools/net/ILLink.Tasks.deps.json",
-        "tools/net/ILLink.Tasks.dll",
-        "tools/net/Mono.Cecil.Mdb.dll",
-        "tools/net/Mono.Cecil.Pdb.dll",
-        "tools/net/Mono.Cecil.Rocks.dll",
-        "tools/net/Mono.Cecil.dll",
-        "tools/net/Sdk/Sdk.props",
-        "tools/net/build/Microsoft.NET.ILLink.Analyzers.props",
-        "tools/net/build/Microsoft.NET.ILLink.Tasks.props",
-        "tools/net/build/Microsoft.NET.ILLink.targets",
-        "tools/net/illink.deps.json",
-        "tools/net/illink.dll",
-        "tools/net/illink.runtimeconfig.json",
-        "tools/netframework/ILLink.Tasks.dll",
-        "tools/netframework/ILLink.Tasks.dll.config",
-        "tools/netframework/Mono.Cecil.Mdb.dll",
-        "tools/netframework/Mono.Cecil.Pdb.dll",
-        "tools/netframework/Mono.Cecil.Rocks.dll",
-        "tools/netframework/Mono.Cecil.dll",
-        "tools/netframework/Sdk/Sdk.props",
-        "tools/netframework/System.Buffers.dll",
-        "tools/netframework/System.Collections.Immutable.dll",
-        "tools/netframework/System.Memory.dll",
-        "tools/netframework/System.Numerics.Vectors.dll",
-        "tools/netframework/System.Reflection.Metadata.dll",
-        "tools/netframework/System.Runtime.CompilerServices.Unsafe.dll",
-        "tools/netframework/build/Microsoft.NET.ILLink.Analyzers.props",
-        "tools/netframework/build/Microsoft.NET.ILLink.Tasks.props",
-        "tools/netframework/build/Microsoft.NET.ILLink.targets",
-        "useSharedDesignerContext.txt"
-      ]
     }
   },
   "projectFileDependencyGroups": {
     "net10.0-windows7.0": [
       "CommunityToolkit.Mvvm >= 8.4.0",
-      "H.NotifyIcon.Wpf >= 2.4.1",
-      "Microsoft.NET.ILLink.Tasks >= 10.0.5"
+      "H.NotifyIcon.Wpf >= 2.4.1"
     ]
   },
   "packageFolders": {
@@ -362,12 +233,6 @@
           "H.NotifyIcon.Wpf": {
             "target": "Package",
             "version": "[2.4.1, )"
-          },
-          "Microsoft.NET.ILLink.Tasks": {
-            "suppressParent": "All",
-            "target": "Package",
-            "version": "[10.0.5, )",
-            "autoReferenced": true
           }
         },
         "imports": [
@@ -381,20 +246,6 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
-        "downloadDependencies": [
-          {
-            "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-            "version": "[10.0.5, 10.0.5]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Runtime.win-x64",
-            "version": "[10.0.5, 10.0.5]"
-          },
-          {
-            "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
-            "version": "[10.0.5, 10.0.5]"
-          }
-        ],
         "frameworkReferences": {
           "Microsoft.NETCore.App": {
             "privateAssets": "all"
@@ -694,11 +545,6 @@
           "System.Xml.XPath": "(,4.3.32767]",
           "System.Xml.XPath.XDocument": "(,5.0.32767]"
         }
-      }
-    },
-    "runtimes": {
-      "win-x64": {
-        "#import": []
       }
     }
   }

@@ -8,9 +8,11 @@ namespace UsageMonitoring.App.Services;
 public sealed class CodexAppServerClient : ICodexAppServerClient
 {
     private readonly CodexExecutableLocator _locator;
+    private readonly WindowsSystemProxyService _proxyService = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly CancellationTokenSource _lifetimeCts = new();
+    private CancellationTokenSource? _sessionCts;
     private Process? _process;
     private PeriodicTimer? _pollTimer;
     private Task? _stdoutTask;
@@ -36,6 +38,8 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     public string? ExecutablePath { get; private set; }
 
     public string? PreferredExecutablePath { get; set; }
+
+    public bool UseSystemProxy { get; set; } = true;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -64,6 +68,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        ApplyProxyEnvironment(startInfo);
 
         _process = new Process
         {
@@ -82,14 +87,21 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
             return;
         }
 
-        _stdoutTask = Task.Run(() => ReadOutputLoopAsync(_lifetimeCts.Token), _lifetimeCts.Token);
-        _stderrTask = Task.Run(() => ReadErrorLoopAsync(_lifetimeCts.Token), _lifetimeCts.Token);
+        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+        _stdoutTask = Task.Run(() => ReadOutputLoopAsync(_sessionCts.Token), _sessionCts.Token);
+        _stderrTask = Task.Run(() => ReadErrorLoopAsync(_sessionCts.Token), _sessionCts.Token);
 
         await InitializeAsync(cancellationToken);
         await RefreshRateLimitsAsync(cancellationToken);
 
         _pollTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        _pollTask = Task.Run(() => PollLoopAsync(_lifetimeCts.Token), _lifetimeCts.Token);
+        _pollTask = Task.Run(() => PollLoopAsync(_sessionCts.Token), _sessionCts.Token);
+    }
+
+    public async Task RestartAsync(CancellationToken cancellationToken = default)
+    {
+        await StopProcessAsync();
+        await StartAsync(cancellationToken);
     }
 
     public async Task RefreshRateLimitsAsync(CancellationToken cancellationToken = default)
@@ -119,41 +131,10 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     public async ValueTask DisposeAsync()
     {
         _lifetimeCts.Cancel();
-
-        if (_pollTimer is not null)
-        {
-            _pollTimer.Dispose();
-        }
-
-        if (_process is not null && !_process.HasExited)
-        {
-            try
-            {
-                _process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-            }
-        }
-
-        if (_stdoutTask is not null)
-        {
-            await IgnoreFailuresAsync(_stdoutTask);
-        }
-
-        if (_stderrTask is not null)
-        {
-            await IgnoreFailuresAsync(_stderrTask);
-        }
-
-        if (_pollTask is not null)
-        {
-            await IgnoreFailuresAsync(_pollTask);
-        }
+        await StopProcessAsync();
 
         _writeGate.Dispose();
         _lifetimeCts.Dispose();
-        _process?.Dispose();
     }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)
@@ -422,9 +403,117 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
             pending.TrySetCanceled();
         }
 
+        _sessionCts?.Cancel();
         UpdateConnectionState(LastSyncedAtUtc is null
             ? AppServerConnectionState.Disconnected
             : AppServerConnectionState.Degraded);
+    }
+
+    private void ApplyProxyEnvironment(ProcessStartInfo startInfo)
+    {
+        RemoveProxyVariables(startInfo);
+        if (!UseSystemProxy)
+        {
+            return;
+        }
+
+        var proxyEnvironment = _proxyService.GetProxyEnvironment();
+        if (!proxyEnvironment.IsEnabled)
+        {
+            return;
+        }
+
+        SetProxyVariable(startInfo, "HTTP_PROXY", proxyEnvironment.HttpProxy);
+        SetProxyVariable(startInfo, "HTTPS_PROXY", proxyEnvironment.HttpsProxy);
+        SetProxyVariable(startInfo, "ALL_PROXY", proxyEnvironment.AllProxy);
+        SetProxyVariable(startInfo, "http_proxy", proxyEnvironment.HttpProxy);
+        SetProxyVariable(startInfo, "https_proxy", proxyEnvironment.HttpsProxy);
+        SetProxyVariable(startInfo, "all_proxy", proxyEnvironment.AllProxy);
+        startInfo.Environment["NO_PROXY"] = "127.0.0.1,localhost";
+        startInfo.Environment["no_proxy"] = "127.0.0.1,localhost";
+    }
+
+    private static void RemoveProxyVariables(ProcessStartInfo startInfo)
+    {
+        var keys = new[]
+        {
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "no_proxy"
+        };
+
+        foreach (var key in keys)
+        {
+            startInfo.Environment.Remove(key);
+        }
+    }
+
+    private static void SetProxyVariable(ProcessStartInfo startInfo, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            startInfo.Environment[key] = value;
+        }
+    }
+
+    private async Task StopProcessAsync()
+    {
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+
+        _sessionCts?.Cancel();
+
+        foreach (var pending in _pending.Values)
+        {
+            pending.TrySetCanceled();
+        }
+        _pending.Clear();
+
+        if (_process is not null)
+        {
+            _process.Exited -= OnProcessExited;
+
+            if (!_process.HasExited)
+            {
+                try
+                {
+                    _process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        if (_stdoutTask is not null)
+        {
+            await IgnoreFailuresAsync(_stdoutTask);
+        }
+
+        if (_stderrTask is not null)
+        {
+            await IgnoreFailuresAsync(_stderrTask);
+        }
+
+        if (_pollTask is not null)
+        {
+            await IgnoreFailuresAsync(_pollTask);
+        }
+
+        _sessionCts?.Dispose();
+        _sessionCts = null;
+
+        _stdoutTask = null;
+        _stderrTask = null;
+        _pollTask = null;
+
+        _process?.Dispose();
+        _process = null;
     }
 
     private void UpdateConnectionState(AppServerConnectionState state)

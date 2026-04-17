@@ -12,5 +12,7 @@ public sealed class AppSettings
 
     public bool ClickThrough { get; set; }
 
+    public bool UseSystemProxyForCodex { get; set; } = true;
+
     public string? CodexExecutablePath { get; set; }
 }

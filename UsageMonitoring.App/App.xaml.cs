@@ -118,6 +118,7 @@ public partial class App : Application
 
         var isWindowVisible = _mainWindow?.IsVisible == true;
         var isClickThroughEnabled = _mainViewModel?.ClickThrough == true;
+        var useSystemProxy = _mainViewModel?.UseSystemProxyForCodex == true;
         foreach (var item in contextMenu.Items)
         {
             if (item is not MenuItem menuItem)
@@ -134,6 +135,17 @@ public partial class App : Application
                 menuItem.Visibility = isWindowVisible ? Visibility.Visible : Visibility.Collapsed;
             }
             else if (Equals(menuItem.Tag, "LocateCodexItem"))
+            {
+                menuItem.Visibility = Visibility.Visible;
+            }
+            else if (Equals(menuItem.Tag, "ToggleSystemProxyItem"))
+            {
+                menuItem.Visibility = Visibility.Visible;
+                menuItem.Header = useSystemProxy
+                    ? "Disable System Proxy"
+                    : "Enable System Proxy";
+            }
+            else if (Equals(menuItem.Tag, "ReconnectCodexItem"))
             {
                 menuItem.Visibility = Visibility.Visible;
             }
@@ -161,6 +173,26 @@ public partial class App : Application
         ShowPanel();
         _mainWindow.BrowseForCodexExecutable();
         await _mainViewModel.TryConnectToCodexAsync();
+    }
+
+    private void ToggleSystemProxyMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        _mainViewModel.UseSystemProxyForCodex = !_mainViewModel.UseSystemProxyForCodex;
+    }
+
+    private async void ReconnectCodexMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        await _mainViewModel.ReconnectAsync();
     }
 
     private void ToggleClickThroughMenuItem_OnClick(object sender, RoutedEventArgs e)
