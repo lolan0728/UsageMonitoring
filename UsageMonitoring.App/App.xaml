@@ -156,19 +156,19 @@
             <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="MinWidth" Value="148" />
+            <Setter Property="MinWidth" Value="154" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
                         <Border Background="{StaticResource TrayMenuSurfaceBrush}"
                                 BorderBrush="{StaticResource TrayMenuBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="18"
-                                Padding="8">
+                                CornerRadius="16"
+                                Padding="6">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="22"
                                                   Direction="270"
-                                                  ShadowDepth="6"
+                                  ShadowDepth="6"
                                                   Opacity="0.34"
                                                   Color="#000000" />
                             </Border.Effect>
@@ -184,10 +184,11 @@
             <Setter Property="Foreground" Value="{StaticResource TrayMenuTextBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,9" />
-            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Height" Value="31" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Margin" Value="0,0,0,1" />
             <Setter Property="FontFamily" Value="Segoe UI" />
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -198,8 +199,8 @@
                                 Padding="{TemplateBinding Padding}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
-                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="8" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <ContentPresenter ContentSource="Icon"
@@ -225,7 +226,7 @@
         </Style>
 
         <Style x:Key="TrayMenuSeparatorStyle" TargetType="Separator">
-            <Setter Property="Margin" Value="10,7" />
+            <Setter Property="Margin" Value="8,5" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
@@ -238,6 +239,144 @@
 
         <BitmapImage x:Key="TrayIconArtwork"
                      UriSource="pack://application:,,,/Assets/tray-icon.png" />
+
+        <ContextMenu x:Key="UnifiedAppContextMenu"
+                     x:Shared="False"
+                     Style="{StaticResource TrayContextMenuStyle}"
+                     Opened="TrayContextMenu_OnOpened">
+            <MenuItem Header="Show Window"
+                      Tag="ShowItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="ShowPanelMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Rectangle Width="10"
+                                   Height="7"
+                                   RadiusX="1.2"
+                                   RadiusY="1.2"
+                                   Stroke="{StaticResource TrayMenuIconBrush}"
+                                   StrokeThickness="1.4" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Hide Window"
+                      Tag="HideItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="HidePanelMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Line X1="2"
+                              Y1="6"
+                              X2="10"
+                              Y2="6"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.8"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Locate Codex"
+                      Tag="LocateCodexItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="LocateCodexMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Path Data="M2,9.8 L2,4.2 4.1,2.1 10,2.1 10,9.8 Z"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.3"
+                              StrokeLineJoin="Round" />
+                        <Line X1="8.6"
+                              Y1="8.6"
+                              X2="11"
+                              Y2="11"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.5"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Enable Click-through"
+                      Tag="ToggleClickThroughItem"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="ToggleClickThroughMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Canvas Width="12" Height="12">
+                            <Ellipse Canvas.Left="1.2"
+                                     Canvas.Top="1.2"
+                                     Width="9.6"
+                                     Height="9.6"
+                                     Stroke="{StaticResource TrayMenuIconBrush}"
+                                     StrokeThickness="1.1" />
+                            <Line X1="6"
+                                  Y1="0.6"
+                                  X2="6"
+                                  Y2="2.2"
+                                  Stroke="{StaticResource TrayMenuIconBrush}"
+                                  StrokeThickness="1.1"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
+                            <Line X1="6"
+                                  Y1="9.8"
+                                  X2="6"
+                                  Y2="11.4"
+                                  Stroke="{StaticResource TrayMenuIconBrush}"
+                                  StrokeThickness="1.1"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
+                            <Line X1="0.6"
+                                  Y1="6"
+                                  X2="2.2"
+                                  Y2="6"
+                                  Stroke="{StaticResource TrayMenuIconBrush}"
+                                  StrokeThickness="1.1"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
+                            <Line X1="9.8"
+                                  Y1="6"
+                                  X2="11.4"
+                                  Y2="6"
+                                  Stroke="{StaticResource TrayMenuIconBrush}"
+                                  StrokeThickness="1.1"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
+                            <Ellipse Canvas.Left="5.1"
+                                     Canvas.Top="5.1"
+                                     Width="1.8"
+                                     Height="1.8"
+                                     Fill="{StaticResource TrayMenuIconBrush}" />
+                        </Canvas>
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+            <Separator Style="{StaticResource TrayMenuSeparatorStyle}" />
+            <MenuItem Header="Quit"
+                      Style="{StaticResource TrayMenuItemStyle}"
+                      Click="ExitMenuItem_OnClick">
+                <MenuItem.Icon>
+                    <Grid Width="12" Height="12">
+                        <Line X1="2.2"
+                              Y1="2.2"
+                              X2="9.8"
+                              Y2="9.8"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.8"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                        <Line X1="9.8"
+                              Y1="2.2"
+                              X2="2.2"
+                              Y2="9.8"
+                              Stroke="{StaticResource TrayMenuIconBrush}"
+                              StrokeThickness="1.8"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                    </Grid>
+                </MenuItem.Icon>
+            </MenuItem>
+        </ContextMenu>
 
         <tb:TaskbarIcon x:Key="TrayIcon"
                         ToolTipText="Usage Monitoring"
@@ -254,87 +393,7 @@
                                         BackgroundSource="{StaticResource TrayIconArtwork}" />
             </tb:TaskbarIcon.IconSource>
             <tb:TaskbarIcon.ContextMenu>
-                <ContextMenu Style="{StaticResource TrayContextMenuStyle}"
-                             Opened="TrayContextMenu_OnOpened">
-                    <MenuItem Header="Show Window"
-                              Tag="ShowItem"
-                              Style="{StaticResource TrayMenuItemStyle}"
-                              Click="ShowPanelMenuItem_OnClick">
-                        <MenuItem.Icon>
-                            <Grid Width="12" Height="12">
-                                <Rectangle Width="10"
-                                           Height="7"
-                                           RadiusX="1.2"
-                                           RadiusY="1.2"
-                                           Stroke="{StaticResource TrayMenuIconBrush}"
-                                           StrokeThickness="1.4" />
-                            </Grid>
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem Header="Hide Window"
-                              Tag="HideItem"
-                              Style="{StaticResource TrayMenuItemStyle}"
-                              Click="HidePanelMenuItem_OnClick">
-                        <MenuItem.Icon>
-                            <Grid Width="12" Height="12">
-                                <Line X1="2"
-                                      Y1="6"
-                                      X2="10"
-                                      Y2="6"
-                                      Stroke="{StaticResource TrayMenuIconBrush}"
-                                      StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                            </Grid>
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem Header="Locate Codex"
-                              Tag="LocateCodexItem"
-                              Style="{StaticResource TrayMenuItemStyle}"
-                              Click="LocateCodexMenuItem_OnClick">
-                        <MenuItem.Icon>
-                            <Grid Width="12" Height="12">
-                                <Path Data="M2,9.8 L2,4.2 4.1,2.1 10,2.1 10,9.8 Z"
-                                      Stroke="{StaticResource TrayMenuIconBrush}"
-                                      StrokeThickness="1.3"
-                                      StrokeLineJoin="Round" />
-                                <Line X1="8.6"
-                                      Y1="8.6"
-                                      X2="11"
-                                      Y2="11"
-                                      Stroke="{StaticResource TrayMenuIconBrush}"
-                                      StrokeThickness="1.5"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                            </Grid>
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <Separator Style="{StaticResource TrayMenuSeparatorStyle}" />
-                    <MenuItem Header="Quit"
-                              Style="{StaticResource TrayMenuItemStyle}"
-                              Click="ExitMenuItem_OnClick">
-                        <MenuItem.Icon>
-                            <Grid Width="12" Height="12">
-                                <Line X1="2.2"
-                                      Y1="2.2"
-                                      X2="9.8"
-                                      Y2="9.8"
-                                      Stroke="{StaticResource TrayMenuIconBrush}"
-                                      StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                                <Line X1="9.8"
-                                      Y1="2.2"
-                                      X2="2.2"
-                                      Y2="9.8"
-                                      Stroke="{StaticResource TrayMenuIconBrush}"
-                                      StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                            </Grid>
-                        </MenuItem.Icon>
-                    </MenuItem>
-                </ContextMenu>
+                <StaticResource ResourceKey="UnifiedAppContextMenu" />
             </tb:TaskbarIcon.ContextMenu>
         </tb:TaskbarIcon>
     </Application.Resources>

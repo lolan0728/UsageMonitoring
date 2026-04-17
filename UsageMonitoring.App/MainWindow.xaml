@@ -72,6 +72,7 @@
     </Window.Resources>
 
     <Grid Background="Transparent"
+          ContextMenu="{StaticResource UnifiedAppContextMenu}"
           MouseLeftButtonDown="DragHandle_OnMouseLeftButtonDown">
         <Viewbox Stretch="Uniform">
             <Grid Width="334" Height="300">

@@ -109,6 +109,7 @@ public partial class App : Application
         }
 
         var isWindowVisible = _mainWindow?.IsVisible == true;
+        var isClickThroughEnabled = _mainViewModel?.ClickThrough == true;
         foreach (var item in contextMenu.Items)
         {
             if (item is not MenuItem menuItem)
@@ -128,6 +129,13 @@ public partial class App : Application
             {
                 menuItem.Visibility = Visibility.Visible;
             }
+            else if (Equals(menuItem.Tag, "ToggleClickThroughItem"))
+            {
+                menuItem.Visibility = Visibility.Visible;
+                menuItem.Header = isClickThroughEnabled
+                    ? "Disable Click-through"
+                    : "Enable Click-through";
+            }
         }
     }
 
@@ -145,6 +153,16 @@ public partial class App : Application
         ShowPanel();
         _mainWindow.BrowseForCodexExecutable();
         await _mainViewModel.TryConnectToCodexAsync();
+    }
+
+    private void ToggleClickThroughMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        _mainViewModel.ClickThrough = !_mainViewModel.ClickThrough;
     }
 
     private void ExitMenuItem_OnClick(object sender, RoutedEventArgs e) => Shutdown();
