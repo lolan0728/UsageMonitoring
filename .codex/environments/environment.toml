@@ -12,3 +12,11 @@ command = '''
 cd "/Users/lolan/文档/Usage Monitoring/UsageMonitoring.Mac"
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift run UsageMonitoringMac
 '''
+
+[[actions]]
+name = "生成APP文件"
+icon = "tool"
+command = '''
+cd "/Users/lolan/文档/Usage Monitoring/UsageMonitoring.Mac"
+bash scripts/build_release_app.sh
+'''
