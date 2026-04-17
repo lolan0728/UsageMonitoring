@@ -3,14 +3,17 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let aboutWindowController = AboutWindowController()
+    private let preferences = AppPreferences()
     private var cachedAppName: String?
     private var cachedApplicationMenu: NSMenu?
+    private var appMenuClickThroughItem: NSMenuItem?
     private var isObservingMainMenu = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         installMainMenu()
         startObservingMainMenuMutations()
+        startObservingClickThroughMutations()
     }
 
     func applicationWillBecomeActive(_ notification: Notification) {
@@ -38,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc
     func showAboutWindow(_ sender: Any?) {
         aboutWindowController.show()
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        buildDockMenu()
     }
 
     private func installMainMenu() {
@@ -95,6 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil)
     }
 
+    private func startObservingClickThroughMutations() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleClickThroughMutation(_:)),
+            name: .clickThroughPreferenceDidChange,
+            object: nil)
+    }
+
     @objc
     private func handleMainMenuMutation(_ notification: Notification) {
         // Any time the main menu changes, immediately re-strip to prevent flashes.
@@ -102,6 +117,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let menu = notification.object as? NSMenu, menu === mainMenu {
             stripToApplicationMenuOnly()
         }
+    }
+
+    @objc
+    private func handleClickThroughMutation(_ notification: Notification) {
+        refreshAppMenuClickThroughPresentation()
     }
 
     private func resolvedAppName() -> String {
@@ -117,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applicationMenu() -> NSMenu {
         let name = resolvedAppName()
         if cachedAppName == name, let cachedApplicationMenu {
+            refreshAppMenuClickThroughPresentation()
             return cachedApplicationMenu
         }
         let menu = buildApplicationMenu(appName: name)
@@ -142,7 +163,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h")
         hideItem.target = NSApp
+        hideItem.image = MenuIcons.hideImage
         menu.addItem(hideItem)
+
+        menu.addItem(.separator())
+
+        let clickThroughItem = NSMenuItem(
+            title: "Click Through",
+            action: #selector(toggleClickThroughFromDock(_:)),
+            keyEquivalent: "")
+        clickThroughItem.target = self
+        clickThroughItem.state = .off
+        clickThroughItem.image = MenuIcons.clickThroughImage(enabled: preferences.clickThroughEnabled)
+        menu.addItem(clickThroughItem)
+        appMenuClickThroughItem = clickThroughItem
 
         menu.addItem(.separator())
 
@@ -151,8 +185,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q")
         quitItem.target = NSApp
+        quitItem.image = MenuIcons.quitImage
         menu.addItem(quitItem)
 
         return menu
+    }
+
+    private func buildDockMenu() -> NSMenu {
+        let appName = resolvedAppName()
+        let menu = NSMenu(title: appName)
+
+        let clickThroughItem = NSMenuItem(
+            title: "Click Through",
+            action: #selector(toggleClickThroughFromDock(_:)),
+            keyEquivalent: "")
+        clickThroughItem.target = self
+        clickThroughItem.state = .off
+        clickThroughItem.image = MenuIcons.clickThroughImage(enabled: preferences.clickThroughEnabled)
+        menu.addItem(clickThroughItem)
+
+        return menu
+    }
+
+    @objc
+    private func toggleClickThroughFromDock(_ sender: Any?) {
+        preferences.clickThroughEnabled.toggle()
+        NotificationCenter.default.post(name: .clickThroughPreferenceDidChange, object: nil)
+    }
+
+    private func refreshAppMenuClickThroughPresentation() {
+        guard let appMenuClickThroughItem else {
+            return
+        }
+
+        let isEnabled = preferences.clickThroughEnabled
+        appMenuClickThroughItem.state = .off
+        appMenuClickThroughItem.title = "Click Through"
+        appMenuClickThroughItem.image = MenuIcons.clickThroughImage(enabled: isEnabled)
     }
 }

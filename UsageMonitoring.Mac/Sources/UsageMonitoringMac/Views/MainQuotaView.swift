@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainQuotaView: View {
     @ObservedObject var store: QuotaStore
+    @ObservedObject var windowController: FloatingWindowController
     let onHide: () -> Void
     let onQuit: () -> Void
 
@@ -40,12 +41,28 @@ struct MainQuotaView: View {
         .background(Color.clear)
         .contentShape(Rectangle())
         .contextMenu {
-            Button("Hide") {
-                onHide()
+            Button {
+                windowController.toggleClickThrough()
+            } label: {
+                Label(
+                    "Click Through",
+                    systemImage: windowController.isClickThroughEnabled
+                        ? MenuIcons.clickThroughEnabledSystemName
+                        : MenuIcons.clickThroughDisabledSystemName)
             }
 
-            Button("Quit") {
+            Divider()
+
+            Button {
+                onHide()
+            } label: {
+                Label("Hide", systemImage: MenuIcons.hideSystemName)
+            }
+
+            Button {
                 onQuit()
+            } label: {
+                Label("Quit", systemImage: MenuIcons.quitSystemName)
             }
         }
     }

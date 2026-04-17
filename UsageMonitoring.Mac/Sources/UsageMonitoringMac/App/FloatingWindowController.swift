@@ -10,15 +10,18 @@ private final class FloatingPanelWindow: NSWindow {
 @MainActor
 final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var isWindowVisible = false
+    @Published private(set) var isClickThroughEnabled = false
 
     private let preferences: AppPreferences
     private var window: NSWindow?
     private weak var store: QuotaStore?
     private var isObservingApplicationVisibility = false
+    private var isObservingClickThroughPreference = false
     private static let windowSize = CGSize(width: 216, height: 190)
 
     init(preferences: AppPreferences) {
         self.preferences = preferences
+        self.isClickThroughEnabled = preferences.clickThroughEnabled
     }
 
     func attach(store: QuotaStore) {
@@ -30,6 +33,7 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
 
         let contentView = MainQuotaView(
             store: store,
+            windowController: self,
             onHide: { [weak self] in
                 self?.hideApplication()
             },
@@ -56,9 +60,11 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         window.delegate = self
         window.minSize = Self.windowSize
         window.maxSize = Self.windowSize
+        applyClickThroughState(to: window)
 
         self.window = window
         observeApplicationVisibility()
+        observeClickThroughPreferenceChanges()
         syncWindowVisibility()
     }
 
@@ -75,8 +81,12 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
             NSApp.unhide(nil)
         }
 
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        if isClickThroughEnabled {
+            window.orderFront(nil)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
         syncWindowVisibility()
     }
 
@@ -100,6 +110,25 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         } else {
             showWindow()
         }
+    }
+
+    func setClickThroughEnabled(_ enabled: Bool) {
+        guard isClickThroughEnabled != enabled else {
+            return
+        }
+
+        isClickThroughEnabled = enabled
+        preferences.clickThroughEnabled = enabled
+
+        if let window {
+            applyClickThroughState(to: window)
+        }
+
+        NotificationCenter.default.post(name: .clickThroughPreferenceDidChange, object: nil)
+    }
+
+    func toggleClickThrough() {
+        setClickThroughEnabled(!isClickThroughEnabled)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -172,8 +201,31 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         isWindowVisible = (window?.isVisible ?? false) && !NSApp.isHidden
     }
 
+    private func applyClickThroughState(to window: NSWindow) {
+        window.ignoresMouseEvents = isClickThroughEnabled
+        window.level = isClickThroughEnabled ? .normal : .floating
+    }
+
     @objc
     private func handleApplicationVisibilityChange(_ notification: Notification) {
         syncWindowVisibility()
+    }
+
+    private func observeClickThroughPreferenceChanges() {
+        guard !isObservingClickThroughPreference else {
+            return
+        }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleClickThroughPreferenceChange(_:)),
+            name: .clickThroughPreferenceDidChange,
+            object: nil)
+        isObservingClickThroughPreference = true
+    }
+
+    @objc
+    private func handleClickThroughPreferenceChange(_ notification: Notification) {
+        setClickThroughEnabled(preferences.clickThroughEnabled)
     }
 }

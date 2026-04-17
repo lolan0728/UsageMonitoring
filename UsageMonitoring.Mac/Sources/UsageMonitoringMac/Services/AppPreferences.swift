@@ -5,6 +5,7 @@ final class AppPreferences {
         static let codexExecutablePath = "codexExecutablePath"
         static let windowPlacement = "windowPlacement"
         static let launchAtLogin = "launchAtLogin"
+        static let clickThroughEnabled = "clickThroughEnabled"
     }
 
     private let defaults: UserDefaults
@@ -29,6 +30,11 @@ final class AppPreferences {
     var launchAtLogin: Bool {
         get { defaults.bool(forKey: Key.launchAtLogin) }
         set { defaults.set(newValue, forKey: Key.launchAtLogin) }
+    }
+
+    var clickThroughEnabled: Bool {
+        get { defaults.bool(forKey: Key.clickThroughEnabled) }
+        set { defaults.set(newValue, forKey: Key.clickThroughEnabled) }
     }
 
     func loadWindowPlacement() -> WindowPlacement? {
