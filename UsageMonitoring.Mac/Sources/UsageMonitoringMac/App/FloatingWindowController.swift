@@ -18,6 +18,8 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
     private var isObservingApplicationVisibility = false
     private var isObservingClickThroughPreference = false
     private static let windowSize = CGSize(width: 216, height: 190)
+    private static let baseCollectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    private static let clickThroughCollectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
     init(preferences: AppPreferences) {
         self.preferences = preferences
@@ -53,7 +55,7 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.level = .floating
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.collectionBehavior = Self.baseCollectionBehavior
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
@@ -204,6 +206,7 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
     private func applyClickThroughState(to window: NSWindow) {
         window.ignoresMouseEvents = isClickThroughEnabled
         window.level = isClickThroughEnabled ? .normal : .floating
+        window.collectionBehavior = isClickThroughEnabled ? Self.clickThroughCollectionBehavior : Self.baseCollectionBehavior
     }
 
     @objc
