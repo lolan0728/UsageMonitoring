@@ -16,6 +16,7 @@ public partial class App : Application
     private RateLimitSnapshotService? _rateLimitSnapshotService;
     private RateLimitStore? _rateLimitStore;
     private CodexAppServerClient? _codexClient;
+    private MemoryFootprintService? _memoryFootprintService;
     private MainViewModel? _mainViewModel;
     private MainWindow? _mainWindow;
     private TaskbarIcon? _trayIcon;
@@ -39,6 +40,8 @@ public partial class App : Application
         _autostartService = new AutostartService();
         _rateLimitSnapshotService = new RateLimitSnapshotService();
         _rateLimitStore = new RateLimitStore();
+        _memoryFootprintService = new MemoryFootprintService(TimeSpan.FromMinutes(5));
+        _memoryFootprintService.Start();
 
         var cachedBuckets = _rateLimitSnapshotService.Load();
         if (cachedBuckets.Count > 0)
@@ -88,6 +91,11 @@ public partial class App : Application
         if (_codexClient is not null)
         {
             await _codexClient.DisposeAsync();
+        }
+
+        if (_memoryFootprintService is not null)
+        {
+            await _memoryFootprintService.DisposeAsync();
         }
 
         if (_singleInstanceMutex is not null)
@@ -186,7 +194,11 @@ public partial class App : Application
 
     private void ShowPanel() => _mainWindow?.ShowPanel();
 
-    private void HidePanel() => _mainWindow?.HidePanel();
+    private void HidePanel()
+    {
+        _mainWindow?.HidePanel();
+        _memoryFootprintService?.TrimNow(forceGc: true);
+    }
 
     private void OnRateLimitStoreBucketsUpdated(object? sender, IReadOnlyList<RateLimitBucket> buckets)
     {

@@ -15,7 +15,7 @@
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
-        Topmost="{Binding AlwaysOnTop}"
+        Topmost="{Binding EffectiveAlwaysOnTop}"
         SourceInitialized="Window_SourceInitialized"
         Closing="Window_Closing"
         LocationChanged="Window_LocationChanged">

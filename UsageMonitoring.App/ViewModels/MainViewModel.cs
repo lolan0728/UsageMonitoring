@@ -32,6 +32,7 @@ public partial class MainViewModel : ObservableObject
         AlwaysOnTop = settings.AlwaysOnTop;
         LaunchOnStartup = autostartService.IsEnabled() || settings.LaunchOnStartup;
         ClickThrough = settings.ClickThrough;
+        RefreshEffectiveAlwaysOnTop();
         CodexExecutablePath = settings.CodexExecutablePath ?? "Auto detect";
         ConnectionStatusText = "Waiting for Codex app-server";
     }
@@ -57,6 +58,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool alwaysOnTop;
+
+    [ObservableProperty]
+    private bool effectiveAlwaysOnTop;
 
     [ObservableProperty]
     private bool launchOnStartup;
@@ -128,6 +132,8 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnAlwaysOnTopChanged(bool value)
     {
+        RefreshEffectiveAlwaysOnTop();
+
         if (_suspendPersistence)
         {
             return;
@@ -150,6 +156,8 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnClickThroughChanged(bool value)
     {
+        RefreshEffectiveAlwaysOnTop();
+
         if (_suspendPersistence)
         {
             return;
@@ -282,6 +290,11 @@ public partial class MainViewModel : ObservableObject
         _settings.ClickThrough = ClickThrough;
         _settings.CodexExecutablePath = CodexExecutablePath;
         _settingsService.Save(_settings);
+    }
+
+    private void RefreshEffectiveAlwaysOnTop()
+    {
+        EffectiveAlwaysOnTop = AlwaysOnTop && !ClickThrough;
     }
 
     private static string FormatRefreshTime(DateTimeOffset resetAtUtc, bool timeOnly = false)

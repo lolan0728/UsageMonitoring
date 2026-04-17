@@ -42,7 +42,6 @@ public partial class MainWindow : Window
         }
 
         Activate();
-        Topmost = _viewModel.AlwaysOnTop;
     }
 
     public void HidePanel() => Hide();
