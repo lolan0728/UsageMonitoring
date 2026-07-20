@@ -31,8 +31,9 @@ final class CodexAppServerClientMac: @unchecked Sendable {
     private var _executablePath: String?
     private var _preferredExecutablePath: String?
     private var _lastSyncedAtUtc: Date?
+    private var _latestSnapshot: CodexQuotaSnapshot?
 
-    var onRateLimitsUpdated: (@MainActor ([RateLimitBucket]) -> Void)?
+    var onQuotaSnapshotUpdated: (@MainActor (CodexQuotaSnapshot) -> Void)?
     var onConnectionStateChanged: (@MainActor (AppServerConnectionState) -> Void)?
 
     init(locator: CodexExecutableLocatorMac, preferredExecutablePath: String? = nil) {
@@ -116,8 +117,8 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-        process.terminationHandler = { [weak self] _ in
-            self?.handleProcessExit()
+        process.terminationHandler = { [weak self] terminatedProcess in
+            self?.handleProcessExit(terminatedProcess)
         }
 
         if let version = Self.codexVersion(executablePath: resolvedExecutable, environment: environment) {
@@ -194,22 +195,28 @@ final class CodexAppServerClientMac: @unchecked Sendable {
                 ]
             ])
 
+        try sendNotificationSync(method: "initialized", params: [:])
+
         updateConnectionState(.connected)
     }
 
     private func refreshRateLimitsSync() {
         Self.log("sending request: account/rateLimits/read")
         guard let result = try? sendRequestSync(method: "account/rateLimits/read", params: nil),
-              let rateLimits = result["rateLimits"] as? [String: Any]
+              let parsed = try? Self.parseQuotaPayload(result)
         else {
             Self.log("rate limit read failed; keeping cached snapshot if present")
             updateConnectionState(.degraded)
             return
         }
 
-        let buckets = Self.toRateLimitBuckets(rateLimits)
-        Self.logBuckets("parsed account/rateLimits/read", buckets: buckets)
-        publishRateLimits(buckets)
+        guard parsed.snapshot.hasDisplayableUsage else {
+            Self.log("rate limit read returned no displayable usage; keeping the last valid snapshot")
+            return
+        }
+
+        Self.logSnapshot("parsed account/rateLimits/read", snapshot: parsed.snapshot)
+        publishQuotaSnapshot(parsed.snapshot)
     }
 
     private func startPollTimer() {
@@ -308,28 +315,36 @@ final class CodexAppServerClientMac: @unchecked Sendable {
 
         if method == "account/rateLimits/updated",
            let params = payload["params"] as? [String: Any],
-           let rateLimits = params["rateLimits"] as? [String: Any] {
-            let buckets = Self.toRateLimitBuckets(rateLimits)
-            Self.logBuckets("parsed account/rateLimits/updated", buckets: buckets)
-            publishRateLimits(buckets)
+           let parsed = try? Self.parseQuotaPayload(params) {
+            let snapshot = mergeNotification(parsed)
+            guard snapshot.hasDisplayableUsage else {
+                Self.log("rate limit notification returned no displayable usage; keeping the last valid snapshot")
+                return
+            }
+
+            Self.logSnapshot("parsed account/rateLimits/updated", snapshot: snapshot)
+            publishQuotaSnapshot(snapshot)
         }
     }
 
-    private func publishRateLimits(_ buckets: [RateLimitBucket]) {
-        guard !buckets.isEmpty else {
-            return
-        }
-
+    private func publishQuotaSnapshot(_ snapshot: CodexQuotaSnapshot) {
         stateLock.withLock {
-            _lastSyncedAtUtc = buckets.map(\.syncedAtUtc).max()
+            _latestSnapshot = snapshot
+            _lastSyncedAtUtc = snapshot.syncedAt
         }
 
         updateConnectionState(.connected)
-        Self.logBuckets("publishing buckets", buckets: buckets)
-        let callback = onRateLimitsUpdated
+        Self.logSnapshot("publishing snapshot", snapshot: snapshot)
+        let callback = onQuotaSnapshotUpdated
         Task { @MainActor in
-            callback?(buckets)
+            callback?(snapshot)
         }
+    }
+
+    private func mergeNotification(_ update: CodexQuotaParseResult) -> CodexQuotaSnapshot {
+        CodexQuotaSnapshotMerger.merge(
+            current: stateLock.withLock { _latestSnapshot },
+            update: update)
     }
 
     private func sendRequestSync(method: String, params: [String: Any]?) throws -> [String: Any] {
@@ -379,6 +394,28 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         return try response.get()
     }
 
+    private func sendNotificationSync(method: String, params: [String: Any]?) throws {
+        guard let stdinHandle = stateLock.withLock({ stdinHandle }),
+              let process = stateLock.withLock({ process }),
+              process.isRunning
+        else {
+            throw ClientError.processUnavailable
+        }
+
+        var payload: [String: Any] = [
+            "jsonrpc": "2.0",
+            "method": method
+        ]
+        if let params {
+            payload["params"] = params
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        Self.log("[rpc notification] \(String(decoding: data, as: UTF8.self))")
+        try stdinHandle.write(contentsOf: data)
+        try stdinHandle.write(contentsOf: Data([0x0A]))
+    }
+
     private func resolvePending(id: Int64, result: Result<[String: Any], Error>) {
         var semaphore: DispatchSemaphore?
         stateLock.withLock {
@@ -394,8 +431,12 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         semaphore?.signal()
     }
 
-    private func handleProcessExit() {
-        stateLock.withLock {
+    private func handleProcessExit(_ terminatedProcess: Process) {
+        let handled = stateLock.withLock { () -> Bool in
+            guard process === terminatedProcess else {
+                return false
+            }
+
             for (_, entry) in pending {
                 entry.semaphore.signal()
             }
@@ -404,8 +445,12 @@ final class CodexAppServerClientMac: @unchecked Sendable {
             stdinHandle = nil
             stdoutHandle = nil
             stderrHandle = nil
+            return true
         }
 
+        guard handled else {
+            return
+        }
         updateConnectionState(lastSyncedAtUtc == nil ? .disconnected : .degraded)
     }
 
@@ -438,136 +483,24 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         }
     }
 
-    private static func toRateLimitBuckets(_ rateLimits: [String: Any]) -> [RateLimitBucket] {
-        let syncedAt = Date()
-        let limitId = rateLimits["limitId"] as? String
-        let limitName = rateLimits["limitName"] as? String
-        var buckets: [RateLimitBucket] = []
-
-        if let primary = rateLimits["primary"] as? [String: Any],
-           let bucket = toRateLimitBucket(primary, syncedAt: syncedAt, limitId: limitId, limitName: limitName) {
-            buckets.append(bucket)
-        }
-
-        if let secondary = rateLimits["secondary"] as? [String: Any],
-           let bucket = toRateLimitBucket(secondary, syncedAt: syncedAt, limitId: limitId, limitName: limitName) {
-            buckets.append(bucket)
-        }
-
-        return buckets.sorted(by: { $0.windowDurationMins < $1.windowDurationMins })
+    private static func parseQuotaPayload(_ payload: [String: Any]) throws -> CodexQuotaParseResult {
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        return try CodexQuotaParser.parse(data: data)
     }
 
-    private static func toRateLimitBucket(
-        _ payload: [String: Any],
-        syncedAt: Date,
-        limitId: String?,
-        limitName: String?
-    ) -> RateLimitBucket? {
-        let windowDurationMins = intValue(payload["windowDurationMins"])
-        guard windowDurationMins > 0 else {
-            return nil
+    private static func sortBuckets(_ buckets: [RateLimitBucket]) -> [RateLimitBucket] {
+        buckets.sorted { lhs, rhs in
+            switch (lhs.windowDurationMins, rhs.windowDurationMins) {
+            case let (left?, right?) where left != right:
+                return left < right
+            case (nil, _?):
+                return false
+            case (_?, nil):
+                return true
+            default:
+                return lhs.id < rhs.id
+            }
         }
-
-        let explicitRemainingPercent = optionalDoubleValue(payload["remainingPercent"])
-        let explicitUsedPercent = optionalDoubleValue(payload["usedPercent"])
-        let remainingPercent: Double
-        let usedPercent: Double
-
-        if let explicitRemainingPercent {
-            remainingPercent = clampPercent(explicitRemainingPercent)
-            usedPercent = clampPercent(explicitUsedPercent ?? (100 - remainingPercent))
-        } else {
-            usedPercent = clampPercent(explicitUsedPercent ?? 0)
-            remainingPercent = clampPercent(100 - usedPercent)
-        }
-
-        let resetsAtUnix = int64Value(payload["resetsAt"])
-        let resetsAtUtc = resetsAtUnix.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-
-        return RateLimitBucket(
-            label: buildWindowLabel(windowDurationMins),
-            windowDurationMins: windowDurationMins,
-            usedPercent: usedPercent,
-            remainingPercent: remainingPercent,
-            resetsAtUtc: resetsAtUtc,
-            syncedAtUtc: syncedAt,
-            limitId: limitId,
-            limitName: limitName)
-    }
-
-    private static func buildWindowLabel(_ minutes: Int) -> String {
-        switch minutes {
-        case 300:
-            return "5h"
-        case 10080:
-            return "1w"
-        case let value where value >= 1440 && value % 1440 == 0:
-            return "\(value / 1440)d"
-        case let value where value >= 60 && value % 60 == 0:
-            return "\(value / 60)h"
-        default:
-            return "\(minutes)m"
-        }
-    }
-
-    private static func intValue(_ raw: Any?) -> Int {
-        switch raw {
-        case let value as Int:
-            return value
-        case let value as Int64:
-            return Int(value)
-        case let value as Double:
-            return Int(value)
-        case let value as NSNumber:
-            return value.intValue
-        default:
-            return 0
-        }
-    }
-
-    private static func int64Value(_ raw: Any?) -> Int64? {
-        switch raw {
-        case let value as Int64:
-            return value
-        case let value as Int:
-            return Int64(value)
-        case let value as Double:
-            return Int64(value)
-        case let value as NSNumber:
-            return value.int64Value
-        default:
-            return nil
-        }
-    }
-
-    private static func doubleValue(_ raw: Any?) -> Double {
-        switch raw {
-        case let value as Double:
-            return value
-        case let value as Int:
-            return Double(value)
-        case let value as NSNumber:
-            return value.doubleValue
-        default:
-            return 0
-        }
-    }
-
-    private static func optionalDoubleValue(_ raw: Any?) -> Double? {
-        switch raw {
-        case let value as Double:
-            return value
-        case let value as Int:
-            return Double(value)
-        case let value as NSNumber:
-            return value.doubleValue
-        default:
-            return nil
-        }
-    }
-
-    private static func clampPercent(_ value: Double) -> Double {
-        max(0, min(100, value))
     }
 
     private static func buildProcessEnvironment() -> [String: String] {
@@ -664,9 +597,13 @@ final class CodexAppServerClientMac: @unchecked Sendable {
 
     private static func codexVersion(executablePath: String, environment: [String: String]) -> String? {
         let process = Process()
+        let finished = DispatchSemaphore(value: 0)
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = ["--version"]
         process.environment = environment
+        process.terminationHandler = { _ in
+            finished.signal()
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -675,8 +612,12 @@ final class CodexAppServerClientMac: @unchecked Sendable {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
+            return nil
+        }
+
+        guard finished.wait(timeout: .now() + 3) == .success else {
+            process.terminate()
             return nil
         }
 
@@ -698,19 +639,23 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         ].joined(separator: " | ")
     }
 
-    private static func logBuckets(_ prefix: String, buckets: [RateLimitBucket]) {
-        if buckets.isEmpty {
-            log("\(prefix): <empty>")
-            return
-        }
-
-        let summary = buckets
-            .sorted(by: { $0.windowDurationMins < $1.windowDurationMins })
+    private static func logSnapshot(_ prefix: String, snapshot: CodexQuotaSnapshot) {
+        let limits = sortBuckets(snapshot.limits)
             .map { bucket in
-                "\(bucket.label) used=\(Int(bucket.usedPercent.rounded())) remain=\(Int(bucket.remainingPercent.rounded())) window=\(bucket.windowDurationMins)"
+                let window = bucket.windowDurationMins.map(String.init) ?? "nil"
+                return "\(bucket.label) used=\(Int(bucket.usedPercent.rounded())) remain=\(Int(bucket.remainingPercent.rounded())) window=\(window)"
             }
             .joined(separator: " | ")
-        log("\(prefix): \(summary)")
+        let credits: String
+        if let status = snapshot.credits {
+            let balance = status.balance ?? "nil"
+            credits = "credits(has=\(status.hasCredits), unlimited=\(status.unlimited), balance=\(balance))"
+        } else {
+            credits = "credits=nil"
+        }
+        let limitSummary = limits.isEmpty ? "<no limits>" : limits
+        let planType = snapshot.planType ?? "nil"
+        log("\(prefix): \(limitSummary) | \(credits) | plan=\(planType)")
     }
 
     private static func log(_ message: String) {

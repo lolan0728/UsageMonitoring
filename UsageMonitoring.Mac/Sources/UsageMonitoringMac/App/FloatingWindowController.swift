@@ -15,9 +15,9 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
     private let preferences: AppPreferences
     private var window: NSWindow?
     private weak var store: QuotaStore?
+    private var quotaCardsCancellable: AnyCancellable?
     private var isObservingApplicationVisibility = false
     private var isObservingClickThroughPreference = false
-    private static let windowSize = CGSize(width: 216, height: 190)
     private static let baseCollectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     private static let clickThroughCollectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
@@ -43,7 +43,10 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
                 NSApplication.shared.terminate(nil)
             })
         let hostingController = NSHostingController(rootView: contentView)
-        let initialFrame = Self.normalizedFrame(from: preferences.loadWindowPlacement()?.cgRect)
+        let initialSize = QuotaPanelLayout.windowSize(cardCount: store.quotaCards.count)
+        let initialFrame = Self.normalizedFrame(
+            from: preferences.loadWindowPlacement()?.cgRect,
+            size: initialSize)
 
         let window = FloatingPanelWindow(
             contentRect: initialFrame,
@@ -60,11 +63,12 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         window.isOpaque = false
         window.hasShadow = false
         window.delegate = self
-        window.minSize = Self.windowSize
-        window.maxSize = Self.windowSize
+        window.minSize = initialSize
+        window.maxSize = initialSize
         applyClickThroughState(to: window)
 
         self.window = window
+        observeQuotaCardCount(store)
         observeApplicationVisibility()
         observeClickThroughPreferenceChanges()
         syncWindowVisibility()
@@ -76,7 +80,7 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         }
 
         if preferences.loadWindowPlacement() == nil {
-            window.setFrame(Self.defaultFrame(for: window), display: false)
+            window.setFrame(Self.defaultFrame(size: window.frame.size, for: window), display: false)
         }
 
         if NSApp.isHidden {
@@ -167,11 +171,10 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
             return
         }
 
-        preferences.saveWindowPlacement(WindowPlacement(frame: Self.normalizedFrame(from: window.frame)))
+        preferences.saveWindowPlacement(WindowPlacement(frame: window.frame))
     }
 
-    private static func defaultFrame(for window: NSWindow? = nil) -> CGRect {
-        let size = windowSize
+    private static func defaultFrame(size: CGSize, for window: NSWindow? = nil) -> CGRect {
         let visibleFrame = window?.screen?.visibleFrame
             ?? NSScreen.main?.visibleFrame
             ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
@@ -180,12 +183,48 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         return CGRect(origin: CGPoint(x: x, y: y), size: size)
     }
 
-    private static func normalizedFrame(from savedFrame: CGRect?) -> CGRect {
+    private static func normalizedFrame(from savedFrame: CGRect?, size: CGSize) -> CGRect {
         guard let savedFrame else {
-            return defaultFrame()
+            return defaultFrame(size: size)
         }
 
-        return CGRect(origin: savedFrame.origin, size: windowSize)
+        let visibleFrame = NSScreen.screens.first(where: { $0.frame.intersects(savedFrame) })?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        return QuotaPanelLayout.resizedFrame(from: savedFrame, to: size, visibleFrame: visibleFrame)
+    }
+
+    private func observeQuotaCardCount(_ store: QuotaStore) {
+        quotaCardsCancellable = store.$quotaCards
+            .map(\.count)
+            .removeDuplicates()
+            .sink { [weak self] count in
+                self?.resizeWindow(forCardCount: count)
+            }
+    }
+
+    private func resizeWindow(forCardCount count: Int) {
+        guard let window else {
+            return
+        }
+
+        let requestedSize = QuotaPanelLayout.windowSize(cardCount: count)
+        let visibleFrame = window.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let newFrame = QuotaPanelLayout.resizedFrame(
+            from: window.frame,
+            to: requestedSize,
+            visibleFrame: visibleFrame)
+
+        window.minSize = newFrame.size
+        window.maxSize = newFrame.size
+        guard window.frame != newFrame else {
+            return
+        }
+
+        window.setFrame(newFrame, display: true, animate: window.isVisible)
+        preferences.saveWindowPlacement(WindowPlacement(frame: newFrame))
     }
 
     private func observeApplicationVisibility() {

@@ -15,6 +15,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "UsageMonitoringMac",
-            path: "Sources/UsageMonitoringMac")
+            path: "Sources/UsageMonitoringMac"),
+        .testTarget(
+            name: "UsageMonitoringMacTests",
+            dependencies: ["UsageMonitoringMac"],
+            path: "Tests/UsageMonitoringMacTests")
     ]
 )

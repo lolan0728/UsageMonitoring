@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QuotaPillView: View {
-    let card: QuotaCardViewData
+    let card: QuotaCardDisplay
     let isLive: Bool
 
     var body: some View {
@@ -12,10 +12,16 @@ struct QuotaPillView: View {
 
             HStack(spacing: 10) {
                 ZStack {
-                    QuotaRingView(
-                        remainingPercent: card.remainingPercent,
-                        ringColor: ringColor,
-                        trackColor: trackColor)
+                    if let progressPercent = card.progressPercent {
+                        QuotaRingView(
+                            remainingPercent: progressPercent,
+                            ringColor: ringColor,
+                            trackColor: trackColor)
+                    } else {
+                        QuotaStatusRingView(
+                            ringColor: ringColor,
+                            trackColor: trackColor)
+                    }
                 }
                 .frame(width: 90, alignment: .center)
 
@@ -33,14 +39,15 @@ struct QuotaPillView: View {
                     Spacer(minLength: 0)
 
                     VStack(spacing: 6) {
-                        Text(card.remainingText)
+                        Text(card.valueText)
                             .font(.custom("Segoe UI Semibold", size: 40))
                             .monospacedDigit()
                             .foregroundStyle(primaryText)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.55)
                             .shadow(color: isLive ? ringColor.opacity(0.18) : .clear, radius: 6, x: 0, y: 0)
 
-                        Text(card.resetText)
+                        Text(card.detailText)
                             .font(.custom("Segoe UI Semibold", size: 18))
                             .foregroundStyle(subtitleText)
                             .lineLimit(1)
@@ -62,27 +69,31 @@ struct QuotaPillView: View {
     }
 
     private var ringColor: Color {
-        if card.label == "5h" {
+        switch card.accent {
+        case .primary:
             return isLive
                 ? Color(red: 18.0 / 255.0, green: 1.0, blue: 166.0 / 255.0)
                 : Color(red: 94.0 / 255.0, green: 157.0 / 255.0, blue: 134.0 / 255.0)
+        case .secondary, .credits:
+            return isLive
+                ? Color(red: 95.0 / 255.0, green: 232.0 / 255.0, blue: 1.0)
+                : Color(red: 108.0 / 255.0, green: 148.0 / 255.0, blue: 158.0 / 255.0)
+        case .unavailable:
+            return Color(red: 108.0 / 255.0, green: 148.0 / 255.0, blue: 158.0 / 255.0)
         }
-
-        return isLive
-            ? Color(red: 95.0 / 255.0, green: 232.0 / 255.0, blue: 1.0)
-            : Color(red: 108.0 / 255.0, green: 148.0 / 255.0, blue: 158.0 / 255.0)
     }
 
     private var trackColor: Color {
-        if card.label == "5h" {
+        switch card.accent {
+        case .primary:
             return isLive
                 ? Color(red: 50.0 / 255.0, green: 117.0 / 255.0, blue: 90.0 / 255.0)
                 : Color(red: 38.0 / 255.0, green: 56.0 / 255.0, blue: 47.0 / 255.0)
+        case .secondary, .credits, .unavailable:
+            return isLive
+                ? Color(red: 45.0 / 255.0, green: 101.0 / 255.0, blue: 112.0 / 255.0)
+                : Color(red: 36.0 / 255.0, green: 55.0 / 255.0, blue: 59.0 / 255.0)
         }
-
-        return isLive
-            ? Color(red: 45.0 / 255.0, green: 101.0 / 255.0, blue: 112.0 / 255.0)
-            : Color(red: 36.0 / 255.0, green: 55.0 / 255.0, blue: 59.0 / 255.0)
     }
 
     private var primaryText: Color {

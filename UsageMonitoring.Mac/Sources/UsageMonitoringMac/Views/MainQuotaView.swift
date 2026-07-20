@@ -6,10 +6,11 @@ struct MainQuotaView: View {
     let onHide: () -> Void
     let onQuit: () -> Void
 
-    private let logicalCanvasSize = CGSize(width: 334, height: 300)
-
     var body: some View {
         GeometryReader { geometry in
+            let logicalCanvasSize = CGSize(
+                width: QuotaPanelLayout.logicalWidth,
+                height: QuotaPanelLayout.logicalHeight(cardCount: store.quotaCards.count))
             let scale = min(
                 geometry.size.width / logicalCanvasSize.width,
                 geometry.size.height / logicalCanvasSize.height)
@@ -20,16 +21,13 @@ struct MainQuotaView: View {
             ZStack {
                 Color.clear
 
-                VStack(spacing: 8) {
-                    QuotaPillView(
-                        card: store.fiveHourCard,
-                        isLive: store.isQuotaLive)
-                        .frame(height: 146)
-
-                    QuotaPillView(
-                        card: store.weeklyCard,
-                        isLive: store.isQuotaLive)
-                        .frame(height: 146)
+                VStack(spacing: QuotaPanelLayout.logicalCardSpacing) {
+                    ForEach(store.quotaCards) { card in
+                        QuotaPillView(
+                            card: card,
+                            isLive: store.isQuotaLive)
+                            .frame(height: QuotaPanelLayout.logicalCardHeight)
+                    }
                 }
                 .frame(width: logicalCanvasSize.width, height: logicalCanvasSize.height)
                 .scaleEffect(scale, anchor: .center)
@@ -37,7 +35,9 @@ struct MainQuotaView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 216, height: 190)
+        .frame(
+            width: QuotaPanelLayout.width,
+            height: QuotaPanelLayout.windowSize(cardCount: store.quotaCards.count).height)
         .background(Color.clear)
         .contentShape(Rectangle())
         .contextMenu {

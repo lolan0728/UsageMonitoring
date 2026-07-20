@@ -4,8 +4,8 @@ import Foundation
 
 @MainActor
 final class QuotaStore: ObservableObject {
-    @Published var fiveHourCard = QuotaCardViewData.placeholder(label: "5h", statusText: "Offline")
-    @Published var weeklyCard = QuotaCardViewData.placeholder(label: "1w", statusText: "Offline")
+    @Published private(set) var quotaCards: [QuotaCardDisplay]
+    @Published private(set) var quotaSnapshot: CodexQuotaSnapshot?
     @Published var isQuotaLive = false
     @Published var connectionState: AppServerConnectionState = .disconnected
     @Published var connectionStatusText = "Waiting for Codex app-server"
@@ -16,7 +16,6 @@ final class QuotaStore: ObservableObject {
     private let snapshotStore: RateLimitSnapshotStore
     private let autostartService: AutostartService
     private let client: CodexAppServerClientMac
-    private var buckets: [RateLimitBucket] = []
 
     init(
         preferences: AppPreferences,
@@ -28,28 +27,20 @@ final class QuotaStore: ObservableObject {
         self.snapshotStore = snapshotStore
         self.autostartService = autostartService
         self.client = client
-        self.launchAtLogin = autostartService.isEnabled() || preferences.launchAtLogin
-        self.codexExecutablePath = preferences.codexExecutablePath ?? "Auto detect"
-        self.client.preferredExecutablePath = preferences.codexExecutablePath
+        launchAtLogin = autostartService.isEnabled() || preferences.launchAtLogin
+        codexExecutablePath = preferences.codexExecutablePath ?? "Auto detect"
+        client.preferredExecutablePath = preferences.codexExecutablePath
 
-        let cachedBuckets = snapshotStore.load()
-        buckets = cachedBuckets
-        applyBuckets(cachedBuckets)
+        let cachedSnapshot = snapshotStore.load()
+        quotaSnapshot = cachedSnapshot
+        quotaCards = QuotaCardFactory.makeCards(snapshot: cachedSnapshot)
 
-        client.onRateLimitsUpdated = { [weak self] buckets in
-            guard let self else {
-                return
-            }
-
-            self.handleRateLimitsUpdated(buckets)
+        client.onQuotaSnapshotUpdated = { [weak self] snapshot in
+            self?.handleQuotaSnapshotUpdated(snapshot)
         }
 
         client.onConnectionStateChanged = { [weak self] state in
-            guard let self else {
-                return
-            }
-
-            self.handleConnectionStateChanged(state)
+            self?.handleConnectionStateChanged(state)
         }
     }
 
@@ -61,6 +52,8 @@ final class QuotaStore: ObservableObject {
     }
 
     func reconnect() async {
+        isQuotaLive = false
+        refreshCards()
         await client.restart()
         if let executablePath = client.executablePath {
             codexExecutablePath = executablePath
@@ -94,29 +87,20 @@ final class QuotaStore: ObservableObject {
         autostartService.setEnabled(enabled)
     }
 
-    private func setCodexExecutablePath(_ path: String) {
-        guard !path.isEmpty else {
+    func handleQuotaSnapshotUpdated(_ snapshot: CodexQuotaSnapshot) {
+        guard snapshot.hasDisplayableUsage else {
             return
         }
 
-        codexExecutablePath = path
-        preferences.codexExecutablePath = path
-        client.preferredExecutablePath = path
-    }
-
-    private func handleRateLimitsUpdated(_ latestBuckets: [RateLimitBucket]) {
-        guard !latestBuckets.isEmpty else {
-            return
-        }
-
+        quotaSnapshot = snapshot
         isQuotaLive = true
-        buckets = latestBuckets
-        snapshotStore.save(latestBuckets)
-        Self.logBuckets("ui received buckets", latestBuckets)
-        applyBuckets(latestBuckets)
+        snapshotStore.save(snapshot)
+        refreshCards()
+        connectionStatusText = "Connected | synced \(Self.timeFormatter.string(from: snapshot.syncedAt))"
+        Self.logSnapshot("ui received snapshot", snapshot)
     }
 
-    private func handleConnectionStateChanged(_ state: AppServerConnectionState) {
+    func handleConnectionStateChanged(_ state: AppServerConnectionState) {
         connectionState = state
 
         if state != .connected {
@@ -128,39 +112,23 @@ final class QuotaStore: ObservableObject {
         }
 
         updateConnectionStatus(for: state)
-        applyConnectionStateCards(for: state)
+        refreshCards()
     }
 
-    private func applyBuckets(_ source: [RateLimitBucket]) {
-        fiveHourCard = buildCard(bucket: source.first(where: { $0.windowDurationMins == 300 }), fallbackLabel: "5h")
-        weeklyCard = buildCard(bucket: source.first(where: { $0.windowDurationMins == 10080 }), fallbackLabel: "1w")
-        Self.log("ui cards: 5h=\(fiveHourCard.remainingText) 1w=\(weeklyCard.remainingText) live=\(isQuotaLive)")
-
-        if isQuotaLive, let lastSyncedAtUtc = client.lastSyncedAtUtc {
-            connectionStatusText = "Connected | synced \(Self.timeFormatter.string(from: lastSyncedAtUtc))"
+    private func setCodexExecutablePath(_ path: String) {
+        guard !path.isEmpty else {
+            return
         }
+
+        codexExecutablePath = path
+        preferences.codexExecutablePath = path
+        client.preferredExecutablePath = path
     }
 
-    private func buildCard(bucket: RateLimitBucket?, fallbackLabel: String) -> QuotaCardViewData {
-        guard let bucket else {
-            return .placeholder(label: fallbackLabel, statusText: "Unavailable")
-        }
-
-        let resetText: String
-        if let resetsAtUtc = bucket.resetsAtUtc {
-            resetText = "Until \(Self.formatResetTime(resetsAtUtc, timeOnly: bucket.windowDurationMins == 300))"
-        } else {
-            resetText = "Until --"
-        }
-
-        return QuotaCardViewData(
-            label: bucket.label,
-            remainingText: "\(Int(bucket.remainingPercent.rounded()))%",
-            resetText: resetText,
-            syncedText: Self.timeFormatter.string(from: bucket.syncedAtUtc),
-            statusText: "\(Int(bucket.usedPercent.rounded()))% used",
-            remainingPercent: bucket.remainingPercent,
-            usedPercent: bucket.usedPercent)
+    private func refreshCards() {
+        quotaCards = QuotaCardFactory.makeCards(snapshot: quotaSnapshot)
+        let summary = quotaCards.map { "\($0.label)=\($0.valueText)" }.joined(separator: " | ")
+        Self.log("ui cards: \(summary) live=\(isQuotaLive)")
     }
 
     private func updateConnectionStatus(for state: AppServerConnectionState) {
@@ -178,69 +146,19 @@ final class QuotaStore: ObservableObject {
         }
     }
 
-    private func applyConnectionStateCards(for state: AppServerConnectionState) {
-        if !buckets.isEmpty {
-            applyBuckets(buckets)
-            return
-        }
-
-        switch state {
-        case .missingExecutable:
-            fiveHourCard = .placeholder(label: "5h", statusText: "Codex missing", resetText: "Locate Codex")
-            weeklyCard = .placeholder(label: "1w", statusText: "Codex missing", resetText: "Locate Codex")
-        case .connecting:
-            fiveHourCard = .placeholder(label: "5h", statusText: "Connecting")
-            weeklyCard = .placeholder(label: "1w", statusText: "Connecting")
-        case .disconnected:
-            fiveHourCard = .placeholder(label: "5h", statusText: "Offline", resetText: "Unavailable")
-            weeklyCard = .placeholder(label: "1w", statusText: "Offline", resetText: "Unavailable")
-        case .degraded:
-            fiveHourCard = .placeholder(label: "5h", statusText: "Unavailable", resetText: "Unavailable")
-            weeklyCard = .placeholder(label: "1w", statusText: "Unavailable", resetText: "Unavailable")
-        case .connected:
-            break
-        }
-    }
-
-    private static func formatResetTime(_ date: Date, timeOnly: Bool) -> String {
-        if timeOnly {
-            return resetTimeFormatter.string(from: date)
-        }
-
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            return resetTimeFormatter.string(from: date)
-        }
-
-        return resetDayTimeFormatter.string(from: date)
-    }
-
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
 
-    private static let resetTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    private static let resetDayTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd HH:mm"
-        return formatter
-    }()
-
-    private static func logBuckets(_ prefix: String, _ buckets: [RateLimitBucket]) {
-        let summary = buckets
-            .sorted(by: { $0.windowDurationMins < $1.windowDurationMins })
-            .map { bucket in
-                "\(bucket.label) used=\(Int(bucket.usedPercent.rounded())) remain=\(Int(bucket.remainingPercent.rounded()))"
-            }
+    private static func logSnapshot(_ prefix: String, _ snapshot: CodexQuotaSnapshot) {
+        let limits = snapshot.limits
+            .map { "\($0.label) used=\(Int($0.usedPercent.rounded())) remain=\(Int($0.remainingPercent.rounded()))" }
             .joined(separator: " | ")
-        log("\(prefix): \(summary)")
+        let limitSummary = limits.isEmpty ? "<no limits>" : limits
+        let creditBalance = snapshot.credits?.balance ?? "nil"
+        log("\(prefix): \(limitSummary) credits=\(creditBalance)")
     }
 
     private static func log(_ message: String) {
