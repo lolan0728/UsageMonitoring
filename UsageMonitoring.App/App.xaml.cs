@@ -43,13 +43,13 @@ public partial class App : Application
         _memoryFootprintService = new MemoryFootprintService(TimeSpan.FromMinutes(5));
         _memoryFootprintService.Start();
 
-        var cachedBuckets = _rateLimitSnapshotService.Load();
-        if (cachedBuckets.Count > 0)
+        var cachedSnapshot = _rateLimitSnapshotService.Load();
+        if (cachedSnapshot.HasDisplayableData)
         {
-            _rateLimitStore.ReplaceBuckets(cachedBuckets);
+            _rateLimitStore.ReplaceSnapshot(cachedSnapshot);
         }
 
-        _rateLimitStore.BucketsUpdated += OnRateLimitStoreBucketsUpdated;
+        _rateLimitStore.SnapshotUpdated += OnRateLimitStoreSnapshotUpdated;
 
         var locator = new CodexExecutableLocator();
         _codexClient = new CodexAppServerClient(locator, _settings.CodexExecutablePath)
@@ -232,8 +232,8 @@ public partial class App : Application
         _memoryFootprintService?.TrimNow(forceGc: true);
     }
 
-    private void OnRateLimitStoreBucketsUpdated(object? sender, IReadOnlyList<RateLimitBucket> buckets)
+    private void OnRateLimitStoreSnapshotUpdated(object? sender, CodexQuotaSnapshot snapshot)
     {
-        _rateLimitSnapshotService?.Save(buckets);
+        _rateLimitSnapshotService?.Save(snapshot);
     }
 }

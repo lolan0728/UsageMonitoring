@@ -6,16 +6,26 @@ public sealed record RateLimitCardDisplay(
     string ResetText,
     string SyncedText,
     string StatusText,
-    double RemainingPercent,
-    double UsedPercent)
+    double RingPercentage,
+    bool IsLive,
+    QuotaCardAccent Accent)
 {
-    public static RateLimitCardDisplay Placeholder(string label, string statusText, string resetText = "Waiting for sync") =>
+    public static RateLimitCardDisplay Placeholder(string statusText = "Usage unavailable") =>
         new(
-            Label: label,
+            Label: "Status",
             RemainingText: "--",
-            ResetText: resetText,
+            ResetText: statusText,
             SyncedText: "Never",
             StatusText: statusText,
-            RemainingPercent: 0,
-            UsedPercent: 0);
+            RingPercentage: 0,
+            IsLive: false,
+            Accent: QuotaCardAccent.Muted);
+}
+
+public enum QuotaCardAccent
+{
+    Green,
+    Cyan,
+    Amber,
+    Muted
 }

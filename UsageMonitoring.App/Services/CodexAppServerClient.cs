@@ -12,6 +12,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly object _snapshotGate = new();
     private CancellationTokenSource? _sessionCts;
     private Process? _process;
     private PeriodicTimer? _pollTimer;
@@ -19,6 +20,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     private Task? _stderrTask;
     private Task? _pollTask;
     private long _requestId;
+    private CodexQuotaSnapshot _latestSnapshot = CodexQuotaSnapshot.Empty;
 
     public CodexAppServerClient(CodexExecutableLocator locator, string? preferredExecutablePath = null)
     {
@@ -27,7 +29,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         ConnectionState = AppServerConnectionState.Disconnected;
     }
 
-    public event EventHandler<IReadOnlyList<RateLimitBucket>>? RateLimitsUpdated;
+    public event EventHandler<CodexQuotaSnapshot>? QuotaUpdated;
 
     public event EventHandler<AppServerConnectionState>? ConnectionStateChanged;
 
@@ -91,11 +93,22 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         _stdoutTask = Task.Run(() => ReadOutputLoopAsync(_sessionCts.Token), _sessionCts.Token);
         _stderrTask = Task.Run(() => ReadErrorLoopAsync(_sessionCts.Token), _sessionCts.Token);
 
-        await InitializeAsync(cancellationToken);
-        await RefreshRateLimitsAsync(cancellationToken);
+        try
+        {
+            await InitializeAsync(cancellationToken);
+            await RefreshRateLimitsAsync(cancellationToken);
 
-        _pollTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        _pollTask = Task.Run(() => PollLoopAsync(_sessionCts.Token), _sessionCts.Token);
+            _pollTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+            _pollTask = Task.Run(() => PollLoopAsync(_sessionCts.Token), _sessionCts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            UpdateConnectionState(AppServerConnectionState.Disconnected);
+        }
+        catch
+        {
+            UpdateConnectionState(AppServerConnectionState.Degraded);
+        }
     }
 
     public async Task RestartAsync(CancellationToken cancellationToken = default)
@@ -114,13 +127,9 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         try
         {
             var result = await SendRequestAsync("account/rateLimits/read", null, cancellationToken);
-            if (!result.TryGetProperty("rateLimits", out var rateLimitsElement))
-            {
-                UpdateConnectionState(AppServerConnectionState.Degraded);
-                return;
-            }
-
-            PublishRateLimits(ToRateLimitBuckets(rateLimitsElement));
+            var snapshot = CodexQuotaParser.ParseReadResponse(result, DateTimeOffset.UtcNow);
+            SetLatestSnapshot(snapshot);
+            PublishQuota(snapshot);
         }
         catch
         {
@@ -155,6 +164,8 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
                 }
             },
             cancellationToken);
+
+        await SendNotificationAsync("initialized", null, cancellationToken);
 
         UpdateConnectionState(AppServerConnectionState.Connected);
     }
@@ -276,7 +287,13 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
                 if (parameters.ValueKind == JsonValueKind.Object &&
                     parameters.TryGetProperty("rateLimits", out var rateLimitsElement))
                 {
-                    PublishRateLimits(ToRateLimitBuckets(rateLimitsElement));
+                    var update = CodexQuotaParser.ParseRateLimitSnapshot(
+                        rateLimitsElement,
+                        DateTimeOffset.UtcNow);
+                    var merged = MergeLatestSnapshot(
+                        update,
+                        CodexQuotaParser.GetLimitId(rateLimitsElement));
+                    PublishQuota(merged);
                 }
                 break;
         }
@@ -323,77 +340,63 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         return await tcs.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
     }
 
-    private void PublishRateLimits(IReadOnlyList<RateLimitBucket> buckets)
+    private async Task SendNotificationAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken)
     {
-        if (buckets.Count == 0)
+        if (_process is null || _process.HasExited)
         {
-            return;
+            throw new InvalidOperationException("Codex app-server is not running.");
         }
 
-        LastSyncedAtUtc = buckets.Max(bucket => bucket.SyncedAtUtc);
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["jsonrpc"] = "2.0",
+                ["method"] = method
+            };
+
+            if (parameters is not null)
+            {
+                payload["params"] = parameters;
+            }
+
+            await _process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(payload));
+            await _process.StandardInput.FlushAsync();
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    private void PublishQuota(CodexQuotaSnapshot snapshot)
+    {
+        LastSyncedAtUtc = snapshot.SyncedAtUtc;
         UpdateConnectionState(AppServerConnectionState.Connected);
-        RateLimitsUpdated?.Invoke(this, buckets);
+        QuotaUpdated?.Invoke(this, snapshot);
     }
 
-    private static IReadOnlyList<RateLimitBucket> ToRateLimitBuckets(JsonElement rateLimitsElement)
+    private void SetLatestSnapshot(CodexQuotaSnapshot snapshot)
     {
-        var syncedAt = DateTimeOffset.UtcNow;
-        var limitId = GetOptionalString(rateLimitsElement, "limitId");
-        var limitName = GetOptionalString(rateLimitsElement, "limitName");
-
-        var items = new List<RateLimitBucket>();
-        if (rateLimitsElement.TryGetProperty("primary", out var primary) && primary.ValueKind == JsonValueKind.Object)
+        lock (_snapshotGate)
         {
-            var primaryBucket = ToRateLimitBucket(primary, syncedAt, limitId, limitName);
-            if (primaryBucket is not null)
-            {
-                items.Add(primaryBucket with
-                {
-                    Label = BuildWindowLabel(primaryBucket.WindowDurationMins)
-                });
-            }
+            _latestSnapshot = snapshot;
         }
-
-        if (rateLimitsElement.TryGetProperty("secondary", out var secondary) && secondary.ValueKind == JsonValueKind.Object)
-        {
-            var secondaryBucket = ToRateLimitBucket(secondary, syncedAt, limitId, limitName);
-            if (secondaryBucket is not null)
-            {
-                items.Add(secondaryBucket with
-                {
-                    Label = BuildWindowLabel(secondaryBucket.WindowDurationMins)
-                });
-            }
-        }
-
-        return items;
     }
 
-    private static RateLimitBucket? ToRateLimitBucket(
-        JsonElement element,
-        DateTimeOffset syncedAt,
-        string? limitId,
-        string? limitName)
+    private CodexQuotaSnapshot MergeLatestSnapshot(
+        CodexQuotaSnapshot update,
+        string? updatedLimitId)
     {
-        var windowDurationMins = GetOptionalInt32(element, "windowDurationMins");
-        if (windowDurationMins <= 0)
+        lock (_snapshotGate)
         {
-            return null;
+            _latestSnapshot = CodexQuotaParser.Merge(_latestSnapshot, update, updatedLimitId);
+            return _latestSnapshot;
         }
-
-        var usedPercent = Math.Clamp(GetOptionalInt32(element, "usedPercent"), 0, 100);
-        var remainingPercent = Math.Clamp(100 - usedPercent, 0, 100);
-        var resetsAtUnix = GetOptionalInt64(element, "resetsAt");
-
-        return new RateLimitBucket(
-            Label: BuildWindowLabel(windowDurationMins),
-            WindowDurationMins: windowDurationMins,
-            UsedPercent: usedPercent,
-            RemainingPercent: remainingPercent,
-            ResetsAtUtc: resetsAtUnix is long value ? DateTimeOffset.FromUnixTimeSeconds(value) : null,
-            SyncedAtUtc: syncedAt,
-            LimitId: limitId,
-            LimitName: limitName);
     }
 
     private void OnProcessExited(object? sender, EventArgs e)
@@ -525,58 +528,6 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 
         ConnectionState = state;
         ConnectionStateChanged?.Invoke(this, state);
-    }
-
-    private static string BuildWindowLabel(int windowDurationMins) => windowDurationMins switch
-    {
-        300 => "5h",
-        10080 => "1w",
-        >= 1440 when windowDurationMins % 1440 == 0 => $"{windowDurationMins / 1440}d",
-        >= 60 when windowDurationMins % 60 == 0 => $"{windowDurationMins / 60}h",
-        _ => $"{windowDurationMins}m"
-    };
-
-    private static int GetOptionalInt32(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty(propertyName, out var property))
-        {
-            return 0;
-        }
-
-        return property.ValueKind switch
-        {
-            JsonValueKind.Number when property.TryGetInt32(out var value) => value,
-            JsonValueKind.Number when property.TryGetInt64(out var longValue) => (int)longValue,
-            _ => 0
-        };
-    }
-
-    private static long? GetOptionalInt64(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty(propertyName, out var property))
-        {
-            return null;
-        }
-
-        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var value))
-        {
-            return value;
-        }
-
-        return null;
-    }
-
-    private static string? GetOptionalString(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty(propertyName, out var property))
-        {
-            return null;
-        }
-
-        return property.ValueKind == JsonValueKind.String ? property.GetString() : null;
     }
 
     private static async Task IgnoreFailuresAsync(Task task)

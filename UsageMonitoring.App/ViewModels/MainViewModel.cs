@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UsageMonitoring.App.Models;
@@ -7,6 +8,11 @@ namespace UsageMonitoring.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
+    private const double CardDesignHeight = 146;
+    private const double CardDesignGap = 8;
+    private const double TwoCardWindowHeight = 190;
+    private const double TwoCardDesignHeight = (CardDesignHeight * 2) + CardDesignGap;
+
     private readonly AppSettings _settings;
     private readonly SettingsService _settingsService;
     private readonly AutostartService _autostartService;
@@ -27,8 +33,7 @@ public partial class MainViewModel : ObservableObject
         _rateLimitStore = rateLimitStore;
         _codexAppServerClient = codexAppServerClient;
 
-        FiveHourCard = RateLimitCardDisplay.Placeholder("5h", "Offline");
-        WeeklyCard = RateLimitCardDisplay.Placeholder("1w", "Offline");
+        QuotaCards.Add(RateLimitCardDisplay.Placeholder());
         AlwaysOnTop = settings.AlwaysOnTop;
         LaunchOnStartup = autostartService.IsEnabled() || settings.LaunchOnStartup;
         ClickThrough = settings.ClickThrough;
@@ -49,11 +54,13 @@ public partial class MainViewModel : ObservableObject
 
     public event EventHandler<bool>? ClickThroughChanged;
 
-    [ObservableProperty]
-    private RateLimitCardDisplay fiveHourCard;
+    public ObservableCollection<RateLimitCardDisplay> QuotaCards { get; } = [];
 
     [ObservableProperty]
-    private RateLimitCardDisplay weeklyCard;
+    private double panelHeight = 95;
+
+    [ObservableProperty]
+    private double panelDesignHeight = CardDesignHeight;
 
     [ObservableProperty]
     private bool isSettingsOpen;
@@ -84,11 +91,11 @@ public partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        _rateLimitStore.BucketsUpdated += OnBucketsUpdated;
-        _codexAppServerClient.RateLimitsUpdated += OnClientRateLimitsUpdated;
+        _rateLimitStore.SnapshotUpdated += OnSnapshotUpdated;
+        _codexAppServerClient.QuotaUpdated += OnClientQuotaUpdated;
         _codexAppServerClient.ConnectionStateChanged += OnConnectionStateChanged;
         UpdateConnectionStatus(_codexAppServerClient.ConnectionState);
-        ApplyBuckets(_rateLimitStore.Buckets);
+        ApplySnapshot(_rateLimitStore.Snapshot, isLive: false);
 
         await _codexAppServerClient.StartAsync(cancellationToken);
 
@@ -199,17 +206,17 @@ public partial class MainViewModel : ObservableObject
         _ = ReconnectAsync();
     }
 
-    private async void OnBucketsUpdated(object? sender, IReadOnlyList<RateLimitBucket> buckets)
+    private async void OnSnapshotUpdated(object? sender, CodexQuotaSnapshot snapshot)
     {
-        await RunOnUiAsync(() => ApplyBuckets(buckets));
+        await RunOnUiAsync(() => ApplySnapshot(snapshot, IsQuotaLive));
     }
 
-    private async void OnClientRateLimitsUpdated(object? sender, IReadOnlyList<RateLimitBucket> buckets)
+    private async void OnClientQuotaUpdated(object? sender, CodexQuotaSnapshot snapshot)
     {
         await RunOnUiAsync(() =>
         {
             IsQuotaLive = true;
-            _rateLimitStore.ReplaceBuckets(buckets);
+            _rateLimitStore.ReplaceSnapshot(snapshot);
         });
     }
 
@@ -218,7 +225,11 @@ public partial class MainViewModel : ObservableObject
         await RunOnUiAsync(() =>
         {
             UpdateConnectionStatus(state);
-            ApplyConnectionStateCards(state);
+            if (state != AppServerConnectionState.Connected)
+            {
+                IsQuotaLive = false;
+                ApplySnapshot(_rateLimitStore.Snapshot, isLive: false);
+            }
 
             if (!string.IsNullOrWhiteSpace(_codexAppServerClient.ExecutablePath))
             {
@@ -227,26 +238,43 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
-    private void ApplyBuckets(IReadOnlyList<RateLimitBucket> buckets)
+    private void ApplySnapshot(CodexQuotaSnapshot snapshot, bool isLive)
     {
-        FiveHourCard = BuildCard(buckets.FirstOrDefault(bucket => bucket.WindowDurationMins == 300), "5h");
-        WeeklyCard = BuildCard(buckets.FirstOrDefault(bucket => bucket.WindowDurationMins == 10080), "1w");
+        var cards = snapshot.Limits
+            .Select((limit, index) => BuildLimitCard(limit, isLive, index))
+            .ToList();
 
-        if (IsQuotaLive && _rateLimitStore.LastUpdatedAtUtc is DateTimeOffset lastUpdated)
+        if (ShouldDisplayCredits(snapshot.Credits))
         {
-            ConnectionStatusText = $"Connected | synced {lastUpdated.ToLocalTime():HH:mm:ss}";
+            cards.Add(BuildCreditsCard(snapshot.Credits!, snapshot, isLive));
+        }
+
+        if (cards.Count == 0)
+        {
+            cards.Add(RateLimitCardDisplay.Placeholder());
+        }
+
+        QuotaCards.Clear();
+        foreach (var card in cards)
+        {
+            QuotaCards.Add(card);
+        }
+
+        UpdatePanelDimensions(cards.Count);
+
+        if (isLive && snapshot.SyncedAtUtc != DateTimeOffset.MinValue)
+        {
+            ConnectionStatusText = $"Connected | synced {snapshot.SyncedAtUtc.ToLocalTime():HH:mm:ss}";
         }
     }
 
-    private static RateLimitCardDisplay BuildCard(RateLimitBucket? bucket, string fallbackLabel)
+    private static RateLimitCardDisplay BuildLimitCard(
+        RateLimitBucket bucket,
+        bool isLive,
+        int index)
     {
-        if (bucket is null)
-        {
-            return RateLimitCardDisplay.Placeholder(fallbackLabel, "Unavailable");
-        }
-
         var resetText = bucket.ResetsAtUtc is DateTimeOffset resetsAt
-            ? $"Until {FormatRefreshTime(resetsAt, bucket.WindowDurationMins == 300)}"
+            ? $"Until {FormatRefreshTime(resetsAt, bucket.WindowDurationMins)}"
             : "Until --";
 
         return new RateLimitCardDisplay(
@@ -255,53 +283,82 @@ public partial class MainViewModel : ObservableObject
             ResetText: resetText,
             SyncedText: bucket.SyncedAtUtc.ToLocalTime().ToString("HH:mm:ss"),
             StatusText: $"{bucket.UsedPercent:0}% used",
-            RemainingPercent: bucket.RemainingPercent,
-            UsedPercent: bucket.UsedPercent);
+            RingPercentage: bucket.RemainingPercent,
+            IsLive: isLive,
+            Accent: GetLimitAccent(bucket, index));
+    }
+
+    private static RateLimitCardDisplay BuildCreditsCard(
+        CreditStatus credits,
+        CodexQuotaSnapshot snapshot,
+        bool isLive)
+    {
+        string primaryText;
+        string secondaryText;
+
+        if (credits.Unlimited)
+        {
+            primaryText = "∞";
+            secondaryText = "Unlimited";
+        }
+        else if (!string.IsNullOrWhiteSpace(credits.Balance))
+        {
+            primaryText = credits.Balance.Trim();
+            secondaryText = "Credits";
+        }
+        else
+        {
+            primaryText = "Ready";
+            secondaryText = "Credits available";
+        }
+
+        return new RateLimitCardDisplay(
+            Label: "Credits",
+            RemainingText: primaryText,
+            ResetText: secondaryText,
+            SyncedText: snapshot.SyncedAtUtc.ToLocalTime().ToString("HH:mm:ss"),
+            StatusText: snapshot.PlanType ?? "Credit balance",
+            RingPercentage: 100,
+            IsLive: isLive,
+            Accent: QuotaCardAccent.Amber);
+    }
+
+    private static bool ShouldDisplayCredits(CreditStatus? credits) =>
+        credits is { Unlimited: true } ||
+        credits is { HasCredits: true };
+
+    private static QuotaCardAccent GetLimitAccent(RateLimitBucket bucket, int index)
+    {
+        if (bucket.WindowDurationMins == 10080)
+        {
+            return QuotaCardAccent.Cyan;
+        }
+
+        return index % 2 == 0
+            ? QuotaCardAccent.Green
+            : QuotaCardAccent.Cyan;
+    }
+
+    private void UpdatePanelDimensions(int cardCount)
+    {
+        var normalizedCount = Math.Max(1, cardCount);
+        PanelDesignHeight = (CardDesignHeight * normalizedCount) +
+                            (CardDesignGap * (normalizedCount - 1));
+        PanelHeight = Math.Max(
+            95,
+            Math.Round(PanelDesignHeight * (TwoCardWindowHeight / TwoCardDesignHeight)));
     }
 
     private void UpdateConnectionStatus(AppServerConnectionState state)
     {
-        if (state != AppServerConnectionState.Connected)
-        {
-            IsQuotaLive = false;
-        }
-
         ConnectionStatusText = state switch
         {
             AppServerConnectionState.Connected => "Connected to Codex app-server, syncing latest quota...",
             AppServerConnectionState.Connecting => "Connecting to Codex app-server...",
             AppServerConnectionState.MissingExecutable => "Codex not installed or codex.exe not found",
-            AppServerConnectionState.Degraded => "Codex app-server unavailable, showing cached history",
-            _ => "Codex app-server offline, showing cached history"
+            AppServerConnectionState.Degraded => "Codex app-server unavailable, showing cached usage",
+            _ => "Codex app-server offline, showing cached usage"
         };
-    }
-
-    private void ApplyConnectionStateCards(AppServerConnectionState state)
-    {
-        if (_rateLimitStore.Buckets.Count > 0 && state != AppServerConnectionState.MissingExecutable)
-        {
-            return;
-        }
-
-        switch (state)
-        {
-            case AppServerConnectionState.MissingExecutable:
-                FiveHourCard = RateLimitCardDisplay.Placeholder("5h", "Codex missing", "Install Codex");
-                WeeklyCard = RateLimitCardDisplay.Placeholder("1w", "Codex missing", "Install Codex");
-                break;
-            case AppServerConnectionState.Connecting:
-                FiveHourCard = RateLimitCardDisplay.Placeholder("5h", "Connecting");
-                WeeklyCard = RateLimitCardDisplay.Placeholder("1w", "Connecting");
-                break;
-            case AppServerConnectionState.Disconnected:
-                FiveHourCard = RateLimitCardDisplay.Placeholder("5h", "Offline", "Unavailable");
-                WeeklyCard = RateLimitCardDisplay.Placeholder("1w", "Offline", "Unavailable");
-                break;
-            case AppServerConnectionState.Degraded when _rateLimitStore.Buckets.Count == 0:
-                FiveHourCard = RateLimitCardDisplay.Placeholder("5h", "Unavailable", "Unavailable");
-                WeeklyCard = RateLimitCardDisplay.Placeholder("1w", "Unavailable", "Unavailable");
-                break;
-        }
     }
 
     private void PersistSettings()
@@ -319,10 +376,10 @@ public partial class MainViewModel : ObservableObject
         EffectiveAlwaysOnTop = AlwaysOnTop && !ClickThrough;
     }
 
-    private static string FormatRefreshTime(DateTimeOffset resetAtUtc, bool timeOnly = false)
+    private static string FormatRefreshTime(DateTimeOffset resetAtUtc, int? windowDurationMins)
     {
         var local = resetAtUtc.ToLocalTime();
-        if (timeOnly)
+        if (windowDurationMins is > 0 and < 1440)
         {
             return local.ToString("HH:mm");
         }

@@ -1,0 +1,6 @@
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\D3DCompiler_47_cor3.dll
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\PenImc_cor3.dll
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\PresentationNative_cor3.dll
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\vcruntime140_cor3.dll
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\wpfgfx_cor3.dll
+C:\Users\vampi\source\Usage Monitoring\publish\prod-win-x64-fd-single\UsageMonitoring.App.exe

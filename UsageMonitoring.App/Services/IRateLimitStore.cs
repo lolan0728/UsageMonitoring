@@ -4,11 +4,11 @@ namespace UsageMonitoring.App.Services;
 
 public interface IRateLimitStore
 {
-    event EventHandler<IReadOnlyList<RateLimitBucket>>? BucketsUpdated;
+    event EventHandler<CodexQuotaSnapshot>? SnapshotUpdated;
 
-    IReadOnlyList<RateLimitBucket> Buckets { get; }
+    CodexQuotaSnapshot Snapshot { get; }
 
     DateTimeOffset? LastUpdatedAtUtc { get; }
 
-    void ReplaceBuckets(IEnumerable<RateLimitBucket> buckets);
+    void ReplaceSnapshot(CodexQuotaSnapshot snapshot);
 }

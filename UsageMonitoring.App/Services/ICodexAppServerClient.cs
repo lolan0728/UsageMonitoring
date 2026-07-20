@@ -4,7 +4,7 @@ namespace UsageMonitoring.App.Services;
 
 public interface ICodexAppServerClient : IAsyncDisposable
 {
-    event EventHandler<IReadOnlyList<RateLimitBucket>>? RateLimitsUpdated;
+    event EventHandler<CodexQuotaSnapshot>? QuotaUpdated;
 
     event EventHandler<AppServerConnectionState>? ConnectionStateChanged;
 

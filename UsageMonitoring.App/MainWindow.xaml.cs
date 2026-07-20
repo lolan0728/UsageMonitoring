@@ -90,6 +90,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_startupPositionApplied && e.HeightChanged)
+        {
+            SnapToWorkArea();
+        }
+    }
+
     private void DragHandle_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed || _viewModel.ClickThrough)

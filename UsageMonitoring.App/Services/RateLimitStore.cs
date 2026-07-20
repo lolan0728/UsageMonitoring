@@ -5,37 +5,43 @@ namespace UsageMonitoring.App.Services;
 public sealed class RateLimitStore : IRateLimitStore
 {
     private readonly object _gate = new();
-    private IReadOnlyList<RateLimitBucket> _buckets = Array.Empty<RateLimitBucket>();
+    private CodexQuotaSnapshot _snapshot = CodexQuotaSnapshot.Empty;
 
-    public event EventHandler<IReadOnlyList<RateLimitBucket>>? BucketsUpdated;
+    public event EventHandler<CodexQuotaSnapshot>? SnapshotUpdated;
 
-    public IReadOnlyList<RateLimitBucket> Buckets
+    public CodexQuotaSnapshot Snapshot
     {
         get
         {
             lock (_gate)
             {
-                return _buckets;
+                return _snapshot;
             }
         }
     }
 
     public DateTimeOffset? LastUpdatedAtUtc { get; private set; }
 
-    public void ReplaceBuckets(IEnumerable<RateLimitBucket> buckets)
+    public void ReplaceSnapshot(CodexQuotaSnapshot snapshot)
     {
-        var normalized = buckets
-            .OrderBy(bucket => bucket.WindowDurationMins)
+        var normalizedLimits = snapshot.Limits
+            .GroupBy(
+                bucket => $"{bucket.LimitId}\u001f{bucket.WindowRole}\u001f{bucket.WindowDurationMins}\u001f{bucket.Label}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderByDescending(bucket => bucket.SyncedAtUtc).First())
+            .OrderBy(bucket => bucket.WindowDurationMins ?? int.MaxValue)
+            .ThenBy(bucket => bucket.Label, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var normalized = snapshot with { Limits = normalizedLimits };
 
         lock (_gate)
         {
-            _buckets = normalized;
-            LastUpdatedAtUtc = normalized.Length == 0
+            _snapshot = normalized;
+            LastUpdatedAtUtc = normalized.SyncedAtUtc == DateTimeOffset.MinValue
                 ? LastUpdatedAtUtc
-                : normalized.Max(bucket => bucket.SyncedAtUtc);
+                : normalized.SyncedAtUtc;
         }
 
-        BucketsUpdated?.Invoke(this, normalized);
+        SnapshotUpdated?.Invoke(this, normalized);
     }
 }

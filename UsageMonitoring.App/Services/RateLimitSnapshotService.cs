@@ -10,51 +10,95 @@ public sealed class RateLimitSnapshotService
     {
         WriteIndented = true
     };
+    private readonly string _snapshotPath;
 
-    public IReadOnlyList<RateLimitBucket> Load()
+    public RateLimitSnapshotService(string? snapshotPath = null)
     {
-        Directory.CreateDirectory(AppPaths.AppDataDirectory);
-        if (!File.Exists(AppPaths.RateLimitSnapshotPath))
+        _snapshotPath = snapshotPath ?? AppPaths.RateLimitSnapshotPath;
+    }
+
+    public CodexQuotaSnapshot Load()
+    {
+        EnsureSnapshotDirectory();
+        if (!File.Exists(_snapshotPath))
         {
-            return Array.Empty<RateLimitBucket>();
+            return CodexQuotaSnapshot.Empty;
         }
 
         try
         {
-            var json = File.ReadAllText(AppPaths.RateLimitSnapshotPath);
+            var json = File.ReadAllText(_snapshotPath);
             var document = JsonSerializer.Deserialize<RateLimitSnapshotDocument>(json, JsonOptions);
-            return document?.Buckets?
-                .OrderBy(bucket => bucket.WindowDurationMins)
-                .ToArray() ?? Array.Empty<RateLimitBucket>();
+            if (document?.Snapshot is CodexQuotaSnapshot snapshot)
+            {
+                return Normalize(snapshot);
+            }
+
+            var legacyBuckets = document?.Buckets ?? [];
+            if (legacyBuckets.Length == 0)
+            {
+                return CodexQuotaSnapshot.Empty;
+            }
+
+            var syncedAtUtc = legacyBuckets.Max(bucket => bucket.SyncedAtUtc);
+            return Normalize(new CodexQuotaSnapshot(
+                legacyBuckets,
+                Credits: null,
+                PlanType: null,
+                SyncedAtUtc: syncedAtUtc));
         }
         catch
         {
-            return Array.Empty<RateLimitBucket>();
+            return CodexQuotaSnapshot.Empty;
         }
     }
 
-    public void Save(IReadOnlyList<RateLimitBucket> buckets)
+    public void Save(CodexQuotaSnapshot snapshot)
     {
-        if (buckets.Count == 0)
+        if (!snapshot.HasDisplayableData)
         {
             return;
         }
 
-        Directory.CreateDirectory(AppPaths.AppDataDirectory);
+        EnsureSnapshotDirectory();
         var document = new RateLimitSnapshotDocument
         {
+            Version = 2,
             SavedAtUtc = DateTimeOffset.UtcNow,
-            Buckets = buckets.OrderBy(bucket => bucket.WindowDurationMins).ToArray()
+            Snapshot = Normalize(snapshot)
         };
 
         var json = JsonSerializer.Serialize(document, JsonOptions);
-        File.WriteAllText(AppPaths.RateLimitSnapshotPath, json);
+        File.WriteAllText(_snapshotPath, json);
     }
 
     private sealed class RateLimitSnapshotDocument
     {
+        public int Version { get; init; }
+
         public DateTimeOffset SavedAtUtc { get; init; }
 
+        public CodexQuotaSnapshot? Snapshot { get; init; }
+
+        // Kept for one-way migration of v1 cache files.
         public RateLimitBucket[] Buckets { get; init; } = [];
+    }
+
+    private static CodexQuotaSnapshot Normalize(CodexQuotaSnapshot snapshot) =>
+        snapshot with
+        {
+            Limits = snapshot.Limits
+                .OrderBy(bucket => bucket.WindowDurationMins ?? int.MaxValue)
+                .ThenBy(bucket => bucket.Label, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        };
+
+    private void EnsureSnapshotDirectory()
+    {
+        var directory = Path.GetDirectoryName(_snapshotPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
     }
 }

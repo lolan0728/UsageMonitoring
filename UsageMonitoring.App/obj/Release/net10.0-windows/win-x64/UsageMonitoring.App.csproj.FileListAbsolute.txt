@@ -245,7 +245,6 @@ C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-w
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\hostfxr.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\hostpolicy.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\mscordaccore.dll
-C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\mscordaccore_amd64_amd64_10.0.526.15411.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\mscordbi.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\mscorrc.dll
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\msquic.dll
@@ -419,3 +418,4 @@ C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-w
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMon.41404779.Up2Date
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\UsageMonitoring.App.genruntimeconfig.cache
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\obj\Release\net10.0-windows\win-x64\ref\UsageMonitoring.App.dll
+C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\bin\Release\net10.0-windows\win-x64\mscordaccore_amd64_amd64_10.0.1026.32716.dll

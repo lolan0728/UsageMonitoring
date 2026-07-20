@@ -1,5 +1,5 @@
 ﻿UsageMonitoring.App
-
+0.1.0.0
 
 winexe
 C#
@@ -12,9 +12,9 @@ TRACE;DEBUG;NET;NET10_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_O
 C:\Users\vampi\source\Usage Monitoring\UsageMonitoring.App\App.xaml
 11407045341
 
-22-1031275774
-210646549810
+27-316030142
+210-253201743
 MainWindow.xaml;
 
-False
+True
 
