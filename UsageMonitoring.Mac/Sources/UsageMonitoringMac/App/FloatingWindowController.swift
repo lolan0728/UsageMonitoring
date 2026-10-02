@@ -2,9 +2,37 @@ import AppKit
 import Combine
 import SwiftUI
 
-private final class FloatingPanelWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+class FloatingPanelWindow: NSWindow {
+    private var dragAnchor: (screenPoint: NSPoint, origin: NSPoint)?
+    override var canBecomeKey: Bool { !ignoresMouseEvents }
+    override var canBecomeMain: Bool { !ignoresMouseEvents }
+
+    override func sendEvent(_ event: NSEvent) {
+        guard !ignoresMouseEvents else {
+            dragAnchor = nil
+            return
+        }
+        // Handle dragging before NSHostingView consumes the click for its menu.
+        switch event.type {
+        case .leftMouseDown:
+            dragAnchor = (convertPoint(toScreen: event.locationInWindow), frame.origin)
+            return
+        case .leftMouseDragged:
+            guard let anchor = dragAnchor else { break }
+            let point = convertPoint(toScreen: event.locationInWindow)
+            setFrameOrigin(NSPoint(
+                x: anchor.origin.x + point.x - anchor.screenPoint.x,
+                y: anchor.origin.y + point.y - anchor.screenPoint.y))
+            return
+        case .leftMouseUp:
+            guard dragAnchor != nil else { break }
+            dragAnchor = nil
+            return
+        default:
+            break
+        }
+        super.sendEvent(event)
+    }
 }
 
 @MainActor
@@ -13,7 +41,7 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
     @Published private(set) var isClickThroughEnabled = false
 
     private let preferences: AppPreferences
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     private weak var store: QuotaStore?
     private var quotaCardsCancellable: AnyCancellable?
     private var isObservingApplicationVisibility = false
@@ -43,6 +71,8 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
                 NSApplication.shared.terminate(nil)
             })
         let hostingController = NSHostingController(rootView: contentView)
+        // The panel owns its frame; SwiftUI's preferred size must not move it.
+        hostingController.sizingOptions = []
         let initialSize = QuotaPanelLayout.windowSize(cardCount: store.quotaCards.count)
         let initialFrame = Self.normalizedFrame(
             from: preferences.loadWindowPlacement()?.cgRect,
@@ -55,16 +85,19 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
             defer: false)
 
         window.contentViewController = hostingController
-        window.isMovableByWindowBackground = true
+        window.isMovable = true
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.level = .floating
         window.collectionBehavior = Self.baseCollectionBehavior
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
+        window.identifier = NSUserInterfaceItemIdentifier("quota-panel")
         window.delegate = self
         window.minSize = initialSize
         window.maxSize = initialSize
+        window.setFrame(initialFrame, display: false)
         applyClickThroughState(to: window)
 
         self.window = window
@@ -246,6 +279,9 @@ final class FloatingWindowController: NSObject, ObservableObject, NSWindowDelega
         window.ignoresMouseEvents = isClickThroughEnabled
         window.level = isClickThroughEnabled ? .normal : .floating
         window.collectionBehavior = isClickThroughEnabled ? Self.clickThroughCollectionBehavior : Self.baseCollectionBehavior
+        if isClickThroughEnabled && window.isKeyWindow {
+            window.resignKey()
+        }
     }
 
     @objc

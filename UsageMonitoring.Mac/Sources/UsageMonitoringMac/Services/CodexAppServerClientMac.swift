@@ -92,6 +92,7 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         }
 
         updateConnectionState(.connecting)
+        startPollTimer()
 
         let resolvedExecutable = locator.locate(preferredPath: preferredExecutablePath)
         stateLock.withLock {
@@ -148,10 +149,11 @@ final class CodexAppServerClientMac: @unchecked Sendable {
         do {
             try initializeSync()
             refreshRateLimitsSync()
-            startPollTimer()
         } catch {
             Self.log("failed during startSync: \(error)")
+            stopSync()
             updateConnectionState(.degraded)
+            startPollTimer()
         }
     }
 
@@ -220,10 +222,16 @@ final class CodexAppServerClientMac: @unchecked Sendable {
     }
 
     private func startPollTimer() {
+        pollTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: rpcQueue)
         timer.schedule(deadline: .now() + .seconds(60), repeating: .seconds(60))
         timer.setEventHandler { [weak self] in
-            self?.refreshRateLimitsSync()
+            guard let self else { return }
+            if stateLock.withLock({ process?.isRunning == true }) {
+                refreshRateLimitsSync()
+            } else {
+                startSync()
+            }
         }
         timer.resume()
         pollTimer = timer

@@ -27,7 +27,7 @@ final class QuotaStore: ObservableObject {
         self.snapshotStore = snapshotStore
         self.autostartService = autostartService
         self.client = client
-        launchAtLogin = autostartService.isEnabled() || preferences.launchAtLogin
+        launchAtLogin = autostartService.isEnabled()
         codexExecutablePath = preferences.codexExecutablePath ?? "Auto detect"
         client.preferredExecutablePath = preferences.codexExecutablePath
 
@@ -82,9 +82,18 @@ final class QuotaStore: ObservableObject {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
-        launchAtLogin = enabled
-        preferences.launchAtLogin = enabled
-        autostartService.setEnabled(enabled)
+        do {
+            try autostartService.setEnabled(enabled)
+            launchAtLogin = autostartService.isEnabled()
+            preferences.launchAtLogin = launchAtLogin
+            if enabled && !launchAtLogin {
+                connectionStatusText = "Allow Usage Monitoring in System Settings > Login Items"
+            }
+        } catch {
+            launchAtLogin = autostartService.isEnabled()
+            preferences.launchAtLogin = launchAtLogin
+            connectionStatusText = "Login item update failed: \(error.localizedDescription)"
+        }
     }
 
     func handleQuotaSnapshotUpdated(_ snapshot: CodexQuotaSnapshot) {

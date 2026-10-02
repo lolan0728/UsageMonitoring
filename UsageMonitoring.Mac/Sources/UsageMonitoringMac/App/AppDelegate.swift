@@ -1,19 +1,44 @@
 import AppKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let aboutWindowController = AboutWindowController()
     private let preferences = AppPreferences()
+    private var quotaStore: QuotaStore?
+    private var floatingWindowController: FloatingWindowController?
     private var cachedAppName: String?
     private var cachedApplicationMenu: NSMenu?
     private var appMenuClickThroughItem: NSMenuItem?
     private var isObservingMainMenu = false
+    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        startApplication()
+    }
+
+    func startApplication() {
+        guard quotaStore == nil else { return }
         NSApp.setActivationPolicy(.regular)
         installMainMenu()
         startObservingMainMenuMutations()
         startObservingClickThroughMutations()
+        let client = CodexAppServerClientMac(
+            locator: CodexExecutableLocatorMac(),
+            preferredExecutablePath: preferences.codexExecutablePath)
+        let store = QuotaStore(
+            preferences: preferences,
+            snapshotStore: RateLimitSnapshotStore(),
+            autostartService: AutostartService(),
+            client: client)
+        let controller = FloatingWindowController(preferences: preferences)
+        quotaStore = store
+        floatingWindowController = controller
+        controller.attach(store: store)
+        controller.showWindow()
+        installStatusMenu()
+        Task {
+            await store.start()
+        }
     }
 
     func applicationWillBecomeActive(_ notification: Notification) {
@@ -30,12 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            sender.activate(ignoringOtherApps: true)
-            sender.windows.first?.makeKeyAndOrderFront(nil)
-        }
-
-        return true
+        floatingWindowController?.showWindow()
+        return false
     }
 
     @objc
@@ -45,6 +66,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         buildDockMenu()
+    }
+
+    private func installStatusMenu() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(systemSymbolName: "chart.donut", accessibilityDescription: "Usage Monitoring")
+        item.button?.image?.isTemplate = true
+        let menu = NSMenu(title: "Usage Monitoring")
+        appendControls(to: menu)
+        menu.addItem(.separator())
+        addItem("About Usage Monitoring", action: #selector(showAboutWindow(_:)), to: menu)
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = NSApp
+        menu.addItem(quit)
+        item.menu = menu
+        statusItem = item
+    }
+
+    private func addItem(_ title: String, action: Selector, to menu: NSMenu) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+    }
+
+    private func appendControls(to menu: NSMenu) {
+        menu.delegate = self
+        let status = NSMenuItem(title: quotaStore?.connectionStatusText ?? "Waiting for Codex", action: nil, keyEquivalent: "")
+        status.tag = 100
+        menu.addItem(status)
+        addItem("Show Window", action: #selector(toggleQuotaWindow(_:)), to: menu)
+        addItem("Click Through", action: #selector(toggleClickThroughFromDock(_:)), to: menu)
+        menu.addItem(.separator())
+        addItem("Refresh Quota", action: #selector(refreshQuota(_:)), to: menu)
+        addItem("Reconnect Codex", action: #selector(reconnectCodex(_:)), to: menu)
+        addItem("Locate Codex…", action: #selector(locateCodex(_:)), to: menu)
+        menu.addItem(.separator())
+        addItem("Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), to: menu)
+        menuNeedsUpdate(menu)
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        for item in menu.items {
+            if item.tag == 100 {
+                item.title = quotaStore?.connectionStatusText ?? "Waiting for Codex"
+            } else if item.action == #selector(toggleQuotaWindow(_:)) {
+                item.title = floatingWindowController?.isWindowVisible == true ? "Hide Window" : "Show Window"
+            } else if item.action == #selector(toggleClickThroughFromDock(_:)) {
+                item.state = preferences.clickThroughEnabled ? .on : .off
+            } else if item.action == #selector(toggleLaunchAtLogin(_:)) {
+                item.state = quotaStore?.launchAtLogin == true ? .on : .off
+            }
+        }
+    }
+
+    @objc private func toggleQuotaWindow(_ sender: Any?) { floatingWindowController?.toggleWindow() }
+    @objc private func refreshQuota(_ sender: Any?) {
+        Task { await quotaStore?.refreshNow() }
+    }
+    @objc private func reconnectCodex(_ sender: Any?) {
+        Task { await quotaStore?.reconnect() }
+    }
+    @objc private func locateCodex(_ sender: Any?) { quotaStore?.locateCodexInteractively() }
+    @objc private func toggleLaunchAtLogin(_ sender: Any?) {
+        guard let store = quotaStore else { return }
+        store.setLaunchAtLogin(!store.launchAtLogin)
     }
 
     private func installMainMenu() {
@@ -173,10 +259,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(toggleClickThroughFromDock(_:)),
             keyEquivalent: "")
         clickThroughItem.target = self
-        clickThroughItem.state = .off
+        clickThroughItem.state = preferences.clickThroughEnabled ? .on : .off
         clickThroughItem.image = MenuIcons.clickThroughImage(enabled: preferences.clickThroughEnabled)
         menu.addItem(clickThroughItem)
         appMenuClickThroughItem = clickThroughItem
+
+        addItem("Show Window", action: #selector(toggleQuotaWindow(_:)), to: menu)
+        addItem("Refresh Quota", action: #selector(refreshQuota(_:)), to: menu)
+        addItem("Reconnect Codex", action: #selector(reconnectCodex(_:)), to: menu)
+        addItem("Locate Codex…", action: #selector(locateCodex(_:)), to: menu)
+        addItem("Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), to: menu)
+        menu.delegate = self
 
         menu.addItem(.separator())
 
@@ -195,31 +288,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appName = resolvedAppName()
         let menu = NSMenu(title: appName)
 
-        let clickThroughItem = NSMenuItem(
-            title: "Click Through",
-            action: #selector(toggleClickThroughFromDock(_:)),
-            keyEquivalent: "")
-        clickThroughItem.target = self
-        clickThroughItem.state = .off
-        clickThroughItem.image = MenuIcons.clickThroughImage(enabled: preferences.clickThroughEnabled)
-        menu.addItem(clickThroughItem)
+        appendControls(to: menu)
 
         return menu
     }
 
     @objc
     private func toggleClickThroughFromDock(_ sender: Any?) {
-        preferences.clickThroughEnabled.toggle()
-        NotificationCenter.default.post(name: .clickThroughPreferenceDidChange, object: nil)
+        floatingWindowController?.toggleClickThrough()
     }
 
     private func refreshAppMenuClickThroughPresentation() {
+        if let menu = cachedApplicationMenu {
+            menuNeedsUpdate(menu)
+        }
+        if let menu = statusItem?.menu {
+            menuNeedsUpdate(menu)
+        }
         guard let appMenuClickThroughItem else {
             return
         }
 
         let isEnabled = preferences.clickThroughEnabled
-        appMenuClickThroughItem.state = .off
+        appMenuClickThroughItem.state = isEnabled ? .on : .off
         appMenuClickThroughItem.title = "Click Through"
         appMenuClickThroughItem.image = MenuIcons.clickThroughImage(enabled: isEnabled)
     }

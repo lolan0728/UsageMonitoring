@@ -12,7 +12,9 @@ final class CodexExecutableLocatorMacTests: XCTestCase {
             homeDirectory: homeDirectory
         )
 
-        XCTAssertEqual(candidates.first, "/Applications/ChatGPT.app/Contents/Resources/codex")
+        XCTAssertEqual(candidates.first, "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
+        XCTAssertTrue(candidates.contains("/Applications/ChatGPT.app/Contents/Resources/codex"))
+        XCTAssertTrue(candidates.contains("/tmp/test-codex-home/plugins/.plugin-appserver/codex-cli/CodexCLI.app/Contents/MacOS/codex"))
         XCTAssertTrue(candidates.contains("/tmp/test-codex-home/plugins/.plugin-appserver/codex"))
     }
 }

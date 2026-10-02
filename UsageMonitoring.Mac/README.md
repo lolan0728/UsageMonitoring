@@ -7,7 +7,10 @@ Native macOS implementation of Usage Monitoring built with SwiftUI and AppKit.
 - SwiftPM-based macOS app target
 - Menu bar extra with `Show Window` / `Hide Window`
 - Floating window with remembered position
+- Native left-button dragging across the capsules; disable Click Through before dragging
+- App, Dock, and status-bar menus with checked Click Through / Launch at Login states
 - Dynamic quota capsules for every app-server limit window
+- Restored `5h` + `1w` quotas display in duration order, with separate remaining percentages and reset times
 - Credits and Unlimited states without fabricated percentage progress
 - Cached snapshot loading on launch
 - Dimmed vs live state switching
@@ -19,6 +22,7 @@ Native macOS implementation of Usage Monitoring built with SwiftUI and AppKit.
 - `account/rateLimits/updated`
 - New `rateLimitsByLimitId` payloads with legacy `rateLimits` fallback
 - 60-second fallback polling
+- Automatic reconnect after app-server exit or a missing executable
 - Manual `Locate Codex`
 - Launch at login toggle
 
@@ -48,9 +52,12 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ## Data Sources
 
 - Preferred executable path from app preferences
+- `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`
+- `/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`
 - `/Applications/ChatGPT.app/Contents/Resources/codex`
 - `/Applications/Codex.app/Contents/Resources/codex`
 - `~/.codex/plugins/.plugin-appserver/codex`
+- `~/.codex/plugins/.plugin-appserver/codex-cli/CodexCLI.app/Contents/MacOS/codex`
 - `~/.codex/.sandbox-bin/codex`
 - `/opt/homebrew/bin/codex` and `/usr/local/bin/codex`
 - `codex` from `PATH` or the user's login shell

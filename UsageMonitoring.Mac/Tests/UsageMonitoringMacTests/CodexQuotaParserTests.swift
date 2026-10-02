@@ -4,6 +4,40 @@ import XCTest
 
 final class CodexQuotaParserTests: XCTestCase {
     @MainActor
+    func testWeeklyOnlyQuotaTransitionsToRestoredFiveHourAndWeeklyQuota() throws {
+        let current = try parse(
+            """
+            { "rateLimitsByLimitId": { "codex": {
+              "primary": { "windowDurationMins": 10080, "usedPercent": 59 }
+            } } }
+            """).snapshot
+        let update = try parse(
+            """
+            {
+              "rateLimitsByLimitId": { "codex": {
+                "limitId": "codex",
+                "normalModelSlug": null,
+                "primary": { "usedPercent": 2, "windowDurationMins": 300, "resetsAt": 1790962929 },
+                "secondary": { "usedPercent": 94, "windowDurationMins": 10080, "resetsAt": 1791087017 },
+                "credits": { "hasCredits": false, "unlimited": false, "balance": "0" },
+                "planType": "plus"
+              } }
+            }
+            """)
+
+        let merged = CodexQuotaSnapshotMerger.merge(current: current, update: update)
+        let cards = QuotaCardFactory.makeCards(snapshot: merged)
+        XCTAssertEqual(merged.limits.count, 2)
+        XCTAssertEqual(cards.map(\.label), ["5h", "1w"])
+        XCTAssertEqual(cards.map(\.valueText), ["98%", "6%"])
+        XCTAssertEqual(cards.map(\.accent), [.primary, .secondary])
+        XCTAssertEqual(merged.limits.map(\.resetsAt), [
+            Date(timeIntervalSince1970: 1790962929),
+            Date(timeIntervalSince1970: 1791087017)
+        ])
+    }
+
+    @MainActor
     func testNewPayloadWithOnlyWeeklyLimitAndNoCreditsMakesOneCard() throws {
         let result = try parse(
             """

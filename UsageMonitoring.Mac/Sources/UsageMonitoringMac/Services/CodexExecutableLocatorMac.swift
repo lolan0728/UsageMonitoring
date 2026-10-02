@@ -12,7 +12,7 @@ final class CodexExecutableLocatorMac {
             }
         }
 
-        return nil
+        return resolveFromLoginShell()
     }
 
     private func enumerateCandidates(preferredPath: String?) -> [String?] {
@@ -24,7 +24,6 @@ final class CodexExecutableLocatorMac {
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
 
         candidates.append(contentsOf: pathEntries.map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("codex").path })
-        candidates.append(resolveFromLoginShell())
         return candidates
     }
 
@@ -33,8 +32,11 @@ final class CodexExecutableLocatorMac {
         homeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     ) -> [String] {
         [
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+            "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
             "/Applications/ChatGPT.app/Contents/Resources/codex",
             "/Applications/Codex.app/Contents/Resources/codex",
+            codexHome.appendingPathComponent("plugins/.plugin-appserver/codex-cli/CodexCLI.app/Contents/MacOS/codex").path,
             codexHome.appendingPathComponent("plugins/.plugin-appserver/codex").path,
             codexHome.appendingPathComponent(".sandbox-bin/codex").path,
             homeDirectory.appendingPathComponent(".local/bin/codex").path,
