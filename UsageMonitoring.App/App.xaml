@@ -244,6 +244,12 @@
                      x:Shared="False"
                      Style="{StaticResource TrayContextMenuStyle}"
                      Opened="TrayContextMenu_OnOpened">
+            <MenuItem Header="Quota status"
+                      Tag="ConnectionStatusItem"
+                      IsEnabled="False"
+                      ToolTipService.ShowOnDisabled="True"
+                      Style="{StaticResource TrayMenuItemStyle}" />
+            <Separator Style="{StaticResource TrayMenuSeparatorStyle}" />
             <MenuItem Header="Show Window"
                       Tag="ShowItem"
                       Style="{StaticResource TrayMenuItemStyle}"

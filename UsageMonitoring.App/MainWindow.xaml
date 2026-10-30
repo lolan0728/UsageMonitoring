@@ -79,6 +79,10 @@
           MouseLeftButtonDown="DragHandle_OnMouseLeftButtonDown">
         <Viewbox Stretch="Uniform">
             <Grid Width="334" Height="{Binding PanelDesignHeight}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="30" />
+                </Grid.RowDefinitions>
                 <ItemsControl ItemsSource="{Binding QuotaCards}"
                               HorizontalContentAlignment="Stretch">
                     <ItemsControl.ItemsPanel>
@@ -97,7 +101,7 @@
                             <Border Margin="20,16"
                                     CornerRadius="42"
                                     Background="#FF4A4A4A"
-                                    ToolTip="{Binding StatusText}">
+                                    ToolTip="{Binding DataContext.ConnectionStatusText, RelativeSource={RelativeSource AncestorType=Window}}">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="18"
                                                       Direction="270"
@@ -157,6 +161,20 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock Grid.Row="1"
+                           Text="{Binding VersionText}"
+                           Margin="20,-8,28,0"
+                           FontFamily="Arial"
+                           FontWeight="Bold"
+                           FontSize="22"
+                           Foreground="#AAB2BB"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
+                           TextOptions.TextFormattingMode="Display">
+                    <TextBlock.LayoutTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="0.82" />
+                    </TextBlock.LayoutTransform>
+                </TextBlock>
             </Grid>
         </Viewbox>
     </Grid>

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using UsageMonitoring.App.Models;
 
@@ -9,22 +10,52 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 {
     private readonly CodexExecutableLocator _locator;
     private readonly WindowsSystemProxyService _proxyService = new();
+    private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly object _snapshotGate = new();
     private CancellationTokenSource? _sessionCts;
     private Process? _process;
-    private PeriodicTimer? _pollTimer;
     private Task? _stdoutTask;
     private Task? _stderrTask;
     private Task? _pollTask;
     private long _requestId;
+    private bool _initialized;
+    private readonly TimeSpan _pollInterval;
+    private readonly TimeSpan _retryInterval;
+    private readonly TimeSpan _requestTimeout;
+    private readonly Func<string, ProcessStartInfo> _startInfoFactory;
     private CodexQuotaSnapshot _latestSnapshot = CodexQuotaSnapshot.Empty;
 
     public CodexAppServerClient(CodexExecutableLocator locator, string? preferredExecutablePath = null)
+        : this(locator, preferredExecutablePath, TimeSpan.FromMinutes(1),
+            TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15))
+    {
+    }
+
+    internal CodexAppServerClient(
+        CodexExecutableLocator locator,
+        string? preferredExecutablePath,
+        TimeSpan pollInterval,
+        TimeSpan retryInterval,
+        TimeSpan requestTimeout,
+        Func<string, ProcessStartInfo>? startInfoFactory = null)
     {
         _locator = locator;
+        _pollInterval = pollInterval;
+        _retryInterval = retryInterval;
+        _requestTimeout = requestTimeout;
+        _startInfoFactory = startInfoFactory ?? (path => new ProcessStartInfo
+        {
+            FileName = path,
+            Arguments = "app-server --analytics-default-enabled",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        });
         PreferredExecutablePath = preferredExecutablePath;
         ConnectionState = AppServerConnectionState.Disconnected;
     }
@@ -39,109 +70,127 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 
     public string? ExecutablePath { get; private set; }
 
+    public string? LastError { get; private set; }
+
     public string? PreferredExecutablePath { get; set; }
 
     public bool UseSystemProxy { get; set; } = true;
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(CancellationToken cancellationToken = default) =>
+        RunOperationAsync(restart: false, cancellationToken);
+
+    public Task RestartAsync(CancellationToken cancellationToken = default) =>
+        RunOperationAsync(restart: true, cancellationToken);
+
+    public Task RefreshRateLimitsAsync(CancellationToken cancellationToken = default) =>
+        RunOperationAsync(restart: false, cancellationToken);
+
+    private async Task RunOperationAsync(bool restart, CancellationToken cancellationToken)
     {
-        if (_process is not null && !_process.HasExited)
-        {
-            return;
-        }
-
-        UpdateConnectionState(AppServerConnectionState.Connecting);
-        ExecutablePath = _locator.Locate(PreferredExecutablePath);
-
-        if (string.IsNullOrWhiteSpace(ExecutablePath))
-        {
-            ExecutablePath = null;
-            UpdateConnectionState(AppServerConnectionState.MissingExecutable);
-            return;
-        }
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = ExecutablePath,
-            Arguments = "app-server --analytics-default-enabled",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        ApplyProxyEnvironment(startInfo);
-
-        _process = new Process
-        {
-            StartInfo = startInfo,
-            EnableRaisingEvents = true
-        };
-        _process.Exited += OnProcessExited;
-
+        using var operationCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        await _operationGate.WaitAsync(operationCts.Token);
         try
         {
-            _process.Start();
-        }
-        catch
-        {
-            UpdateConnectionState(AppServerConnectionState.Degraded);
-            return;
-        }
+            if (restart)
+            {
+                await StopProcessAsync();
+            }
 
-        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
-        _stdoutTask = Task.Run(() => ReadOutputLoopAsync(_sessionCts.Token), _sessionCts.Token);
-        _stderrTask = Task.Run(() => ReadErrorLoopAsync(_sessionCts.Token), _sessionCts.Token);
-
-        try
-        {
-            await InitializeAsync(cancellationToken);
-            await RefreshRateLimitsAsync(cancellationToken);
-
-            _pollTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-            _pollTask = Task.Run(() => PollLoopAsync(_sessionCts.Token), _sessionCts.Token);
+            await ConnectAndRefreshAsync(operationCts.Token);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        finally
         {
-            UpdateConnectionState(AppServerConnectionState.Disconnected);
-        }
-        catch
-        {
-            UpdateConnectionState(AppServerConnectionState.Degraded);
+            // The supervisor must outlive a failed handshake or an exited child process.
+            _pollTask ??= Task.Run(() => PollLoopAsync(_lifetimeCts.Token));
+            _operationGate.Release();
         }
     }
 
-    public async Task RestartAsync(CancellationToken cancellationToken = default)
+    private async Task ConnectAndRefreshAsync(CancellationToken cancellationToken)
     {
-        await StopProcessAsync();
-        await StartAsync(cancellationToken);
-    }
-
-    public async Task RefreshRateLimitsAsync(CancellationToken cancellationToken = default)
-    {
-        if (_process is null || _process.HasExited)
-        {
-            return;
-        }
-
         try
         {
+            if (_process is null || _process.HasExited || !_initialized)
+            {
+                await StopProcessAsync();
+                UpdateConnectionState(AppServerConnectionState.Connecting);
+                ExecutablePath = _locator.Locate(PreferredExecutablePath);
+
+                if (string.IsNullOrWhiteSpace(ExecutablePath))
+                {
+                    ExecutablePath = null;
+                    UpdateConnectionState(AppServerConnectionState.MissingExecutable);
+                    return;
+                }
+
+                var startInfo = _startInfoFactory(ExecutablePath);
+                ApplyProxyEnvironment(startInfo);
+                var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+                try
+                {
+                    process.Start();
+                }
+                catch
+                {
+                    process.Dispose();
+                    throw;
+                }
+                _process = process;
+                process.Exited += OnProcessExited;
+                _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+                var sessionToken = _sessionCts.Token;
+                _stdoutTask = ReadOutputLoopAsync(process, sessionToken);
+                _stderrTask = ReadErrorLoopAsync(process, sessionToken);
+                await InitializeAsync(cancellationToken);
+                _initialized = true;
+            }
+
             var result = await SendRequestAsync("account/rateLimits/read", null, cancellationToken);
             var snapshot = CodexQuotaParser.ParseReadResponse(result, DateTimeOffset.UtcNow);
+            if (!snapshot.HasDisplayableData)
+            {
+                throw new InvalidOperationException("Codex returned no displayable quota data.");
+            }
+
             SetLatestSnapshot(snapshot);
             PublishQuota(snapshot);
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            UpdateConnectionState(AppServerConnectionState.Degraded);
+            await StopProcessAsync();
+            throw;
+        }
+        catch (Exception error)
+        {
+            LastError = error.Message;
+            UpdateConnectionState(AppServerConnectionState.Degraded, force: true);
+            if (!_initialized)
+            {
+                await StopProcessAsync();
+            }
         }
     }
 
     public async ValueTask DisposeAsync()
     {
         _lifetimeCts.Cancel();
-        await StopProcessAsync();
+        if (_pollTask is not null)
+        {
+            await IgnoreFailuresAsync(_pollTask);
+        }
 
+        await _operationGate.WaitAsync();
+        try
+        {
+            await StopProcessAsync();
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+
+        _operationGate.Dispose();
         _writeGate.Dispose();
         _lifetimeCts.Dispose();
     }
@@ -166,21 +215,16 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
             cancellationToken);
 
         await SendNotificationAsync("initialized", null, cancellationToken);
-
-        UpdateConnectionState(AppServerConnectionState.Connected);
     }
 
     private async Task PollLoopAsync(CancellationToken cancellationToken)
     {
-        if (_pollTimer is null)
-        {
-            return;
-        }
-
         try
         {
-            while (await _pollTimer.WaitForNextTickAsync(cancellationToken))
+            while (!cancellationToken.IsCancellationRequested)
             {
+                await Task.Delay(ConnectionState == AppServerConnectionState.Connected
+                    ? _pollInterval : _retryInterval, cancellationToken);
                 await RefreshRateLimitsAsync(cancellationToken);
             }
         }
@@ -189,52 +233,52 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         }
     }
 
-    private async Task ReadOutputLoopAsync(CancellationToken cancellationToken)
+    private async Task ReadOutputLoopAsync(Process process, CancellationToken cancellationToken)
     {
-        if (_process is null)
-        {
-            return;
-        }
-
         try
         {
-            while (!cancellationToken.IsCancellationRequested && !_process.HasExited)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                var line = await _process.StandardOutput.ReadLineAsync();
+                var line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+                if (line is null)
+                {
+                    throw new EndOfStreamException("Codex app-server closed its output stream.");
+                }
+
                 if (string.IsNullOrWhiteSpace(line))
                 {
-                    if (_process.HasExited)
-                    {
-                        break;
-                    }
-
                     continue;
                 }
 
-                HandleIncomingLine(line);
+                try
+                {
+                    HandleIncomingLine(line);
+                }
+                catch (JsonException)
+                {
+                    // A diagnostic line must not permanently stop the RPC reader.
+                }
             }
         }
-        catch (ObjectDisposedException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (InvalidOperationException)
+        catch (Exception error)
         {
+            FailSession(error);
         }
     }
 
-    private async Task ReadErrorLoopAsync(CancellationToken cancellationToken)
+    private static async Task ReadErrorLoopAsync(Process process, CancellationToken cancellationToken)
     {
-        if (_process is null)
-        {
-            return;
-        }
-
         try
         {
-            while (!cancellationToken.IsCancellationRequested && !_process.HasExited)
+            while (await process.StandardError.ReadLineAsync(cancellationToken) is not null)
             {
-                _ = await _process.StandardError.ReadLineAsync();
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (ObjectDisposedException)
         {
@@ -248,10 +292,15 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     {
         using var document = JsonDocument.Parse(line);
         var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
 
         if (root.TryGetProperty("id", out var idElement))
         {
-            var id = idElement.ValueKind == JsonValueKind.Number ? idElement.GetInt64() : 0;
+            var id = idElement.ValueKind == JsonValueKind.Number && idElement.TryGetInt64(out var value)
+                ? value : 0;
             if (_pending.TryRemove(id, out var pending))
             {
                 if (root.TryGetProperty("result", out var resultElement))
@@ -262,7 +311,10 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 
                 if (root.TryGetProperty("error", out var errorElement))
                 {
-                    pending.TrySetException(new InvalidOperationException(errorElement.ToString()));
+                    var message = errorElement.ValueKind == JsonValueKind.Object &&
+                                  errorElement.TryGetProperty("message", out var messageElement)
+                        ? messageElement.GetString() : "Codex app-server request failed.";
+                    pending.TrySetException(new InvalidOperationException(message));
                     return;
                 }
             }
@@ -313,31 +365,38 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[requestId] = tcs;
 
-        await _writeGate.WaitAsync(cancellationToken);
         try
         {
-            var payload = new Dictionary<string, object?>
+            await _writeGate.WaitAsync(cancellationToken);
+            try
             {
-                ["jsonrpc"] = "2.0",
-                ["id"] = requestId,
-                ["method"] = method
-            };
+                var payload = new Dictionary<string, object?>
+                {
+                    ["jsonrpc"] = "2.0",
+                    ["id"] = requestId,
+                    ["method"] = method
+                };
 
-            if (parameters is not null)
+                if (parameters is not null)
+                {
+                    payload["params"] = parameters;
+                }
+
+                var line = JsonSerializer.Serialize(payload);
+                await _process.StandardInput.WriteLineAsync(line);
+                await _process.StandardInput.FlushAsync();
+            }
+            finally
             {
-                payload["params"] = parameters;
+                _writeGate.Release();
             }
 
-            var line = JsonSerializer.Serialize(payload);
-            await _process.StandardInput.WriteLineAsync(line);
-            await _process.StandardInput.FlushAsync();
+            return await tcs.Task.WaitAsync(_requestTimeout, cancellationToken);
         }
         finally
         {
-            _writeGate.Release();
+            _pending.TryRemove(requestId, out _);
         }
-
-        return await tcs.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
     }
 
     private async Task SendNotificationAsync(
@@ -376,6 +435,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
     private void PublishQuota(CodexQuotaSnapshot snapshot)
     {
         LastSyncedAtUtc = snapshot.SyncedAtUtc;
+        LastError = null;
         UpdateConnectionState(AppServerConnectionState.Connected);
         QuotaUpdated?.Invoke(this, snapshot);
     }
@@ -401,15 +461,23 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 
     private void OnProcessExited(object? sender, EventArgs e)
     {
+        if (ReferenceEquals(sender, _process))
+        {
+            FailSession(new InvalidOperationException("Codex app-server exited; reconnecting automatically."));
+        }
+    }
+
+    private void FailSession(Exception error)
+    {
+        _initialized = false;
         foreach (var pending in _pending.Values)
         {
-            pending.TrySetCanceled();
+            pending.TrySetException(error);
         }
 
         _sessionCts?.Cancel();
-        UpdateConnectionState(LastSyncedAtUtc is null
-            ? AppServerConnectionState.Disconnected
-            : AppServerConnectionState.Degraded);
+        LastError = error.Message;
+        UpdateConnectionState(AppServerConnectionState.Degraded, force: true);
     }
 
     private void ApplyProxyEnvironment(ProcessStartInfo startInfo)
@@ -466,9 +534,7 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
 
     private async Task StopProcessAsync()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
-
+        _initialized = false;
         _sessionCts?.Cancel();
 
         foreach (var pending in _pending.Values)
@@ -503,25 +569,19 @@ public sealed class CodexAppServerClient : ICodexAppServerClient
             await IgnoreFailuresAsync(_stderrTask);
         }
 
-        if (_pollTask is not null)
-        {
-            await IgnoreFailuresAsync(_pollTask);
-        }
-
         _sessionCts?.Dispose();
         _sessionCts = null;
 
         _stdoutTask = null;
         _stderrTask = null;
-        _pollTask = null;
 
         _process?.Dispose();
         _process = null;
     }
 
-    private void UpdateConnectionState(AppServerConnectionState state)
+    private void UpdateConnectionState(AppServerConnectionState state, bool force = false)
     {
-        if (ConnectionState == state)
+        if (ConnectionState == state && !force)
         {
             return;
         }

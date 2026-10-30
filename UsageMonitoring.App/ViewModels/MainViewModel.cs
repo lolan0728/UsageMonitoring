@@ -10,6 +10,7 @@ public partial class MainViewModel : ObservableObject
 {
     private const double CardDesignHeight = 146;
     private const double CardDesignGap = 8;
+    private const double VersionFooterDesignHeight = 30;
     private const double TwoCardWindowHeight = 190;
     private const double TwoCardDesignHeight = (CardDesignHeight * 2) + CardDesignGap;
 
@@ -56,11 +57,14 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<RateLimitCardDisplay> QuotaCards { get; } = [];
 
-    [ObservableProperty]
-    private double panelHeight = 95;
+    public string VersionText { get; } =
+        $"v{typeof(MainViewModel).Assembly.GetName().Version?.ToString(3)}";
 
     [ObservableProperty]
-    private double panelDesignHeight = CardDesignHeight;
+    private double panelHeight = 114;
+
+    [ObservableProperty]
+    private double panelDesignHeight = CardDesignHeight + VersionFooterDesignHeight;
 
     [ObservableProperty]
     private bool isSettingsOpen;
@@ -180,17 +184,6 @@ public partial class MainViewModel : ObservableObject
 
         PersistSettings();
         ClickThroughChanged?.Invoke(this, value);
-    }
-
-    partial void OnCodexExecutablePathChanged(string value)
-    {
-        if (_suspendPersistence)
-        {
-            return;
-        }
-
-        _codexAppServerClient.PreferredExecutablePath = value;
-        PersistSettings();
     }
 
     partial void OnUseSystemProxyForCodexChanged(bool value)
@@ -342,11 +335,13 @@ public partial class MainViewModel : ObservableObject
     private void UpdatePanelDimensions(int cardCount)
     {
         var normalizedCount = Math.Max(1, cardCount);
-        PanelDesignHeight = (CardDesignHeight * normalizedCount) +
-                            (CardDesignGap * (normalizedCount - 1));
+        var cardsDesignHeight = (CardDesignHeight * normalizedCount) +
+                                (CardDesignGap * (normalizedCount - 1));
+        var scale = TwoCardWindowHeight / TwoCardDesignHeight;
+        PanelDesignHeight = cardsDesignHeight + VersionFooterDesignHeight;
         PanelHeight = Math.Max(
             95,
-            Math.Round(PanelDesignHeight * (TwoCardWindowHeight / TwoCardDesignHeight)));
+            Math.Round(cardsDesignHeight * scale)) + Math.Round(VersionFooterDesignHeight * scale);
     }
 
     private void UpdateConnectionStatus(AppServerConnectionState state)
@@ -356,7 +351,7 @@ public partial class MainViewModel : ObservableObject
             AppServerConnectionState.Connected => "Connected to Codex app-server, syncing latest quota...",
             AppServerConnectionState.Connecting => "Connecting to Codex app-server...",
             AppServerConnectionState.MissingExecutable => "Codex not installed or codex.exe not found",
-            AppServerConnectionState.Degraded => "Codex app-server unavailable, showing cached usage",
+            AppServerConnectionState.Degraded => $"Showing cached usage; retrying automatically. {_codexAppServerClient.LastError}",
             _ => "Codex app-server offline, showing cached usage"
         };
     }
@@ -367,7 +362,7 @@ public partial class MainViewModel : ObservableObject
         _settings.LaunchOnStartup = LaunchOnStartup;
         _settings.ClickThrough = ClickThrough;
         _settings.UseSystemProxyForCodex = UseSystemProxyForCodex;
-        _settings.CodexExecutablePath = CodexExecutablePath;
+        _settings.CodexExecutablePath = _codexAppServerClient.PreferredExecutablePath;
         _settingsService.Save(_settings);
     }
 

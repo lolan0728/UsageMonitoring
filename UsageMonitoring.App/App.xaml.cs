@@ -126,7 +126,14 @@ public partial class App : Application
                 continue;
             }
 
-            if (Equals(menuItem.Tag, "ShowItem"))
+            if (Equals(menuItem.Tag, "ConnectionStatusItem"))
+            {
+                menuItem.Header = _mainViewModel?.IsQuotaLive == true
+                    ? "Quota is up to date"
+                    : "Cached quota; reconnecting";
+                menuItem.ToolTip = _mainViewModel?.ConnectionStatusText;
+            }
+            else if (Equals(menuItem.Tag, "ShowItem"))
             {
                 menuItem.Visibility = isWindowVisible ? Visibility.Collapsed : Visibility.Visible;
             }

@@ -14,6 +14,8 @@ public interface ICodexAppServerClient : IAsyncDisposable
 
     string? ExecutablePath { get; }
 
+    string? LastError { get; }
+
     string? PreferredExecutablePath { get; set; }
 
     bool UseSystemProxy { get; set; }

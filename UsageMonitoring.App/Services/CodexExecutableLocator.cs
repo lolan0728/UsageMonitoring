@@ -4,9 +4,31 @@ namespace UsageMonitoring.App.Services;
 
 public sealed class CodexExecutableLocator
 {
+    private readonly IEnumerable<string?> _automaticCandidates;
+    private readonly string _legacySandboxPath;
+
+    public CodexExecutableLocator()
+        : this(EnumerateCandidates(), Path.Combine(AppPaths.CodexHome, ".sandbox-bin", "codex.exe"))
+    {
+    }
+
+    internal CodexExecutableLocator(IEnumerable<string?> automaticCandidates, string legacySandboxPath)
+    {
+        _automaticCandidates = automaticCandidates;
+        _legacySandboxPath = legacySandboxPath;
+    }
+
     public string? Locate(string? preferredPath = null)
     {
-        foreach (var candidate in EnumerateCandidates(preferredPath))
+        // Older releases persisted this automatically detected copy as a preference.
+        // Let the installed desktop runtime supersede that stale sandbox copy.
+        if (!string.Equals(preferredPath, _legacySandboxPath, StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(preferredPath))
+        {
+            return preferredPath;
+        }
+
+        foreach (var candidate in _automaticCandidates)
         {
             if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
             {
@@ -14,13 +36,17 @@ public sealed class CodexExecutableLocator
             }
         }
 
-        return null;
+        return File.Exists(preferredPath) ? preferredPath : null;
     }
 
-    private static IEnumerable<string?> EnumerateCandidates(string? preferredPath)
+    private static IEnumerable<string?> EnumerateCandidates()
     {
-        yield return preferredPath;
-        yield return Path.Combine(AppPaths.CodexHome, ".sandbox-bin", "codex.exe");
+        yield return Environment.GetEnvironmentVariable("CODEX_APP_RUNTIME_CLI_PATH");
+        foreach (var candidate in EnumerateDesktopRuntimes())
+        {
+            yield return candidate;
+        }
+
         yield return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Microsoft",
@@ -28,14 +54,35 @@ public sealed class CodexExecutableLocator
             "codex.exe");
 
         var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(pathEnv))
+        foreach (var path in (pathEnv ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
-            yield break;
+            yield return Path.Combine(path.Trim().Trim('"'), "codex.exe");
         }
 
-        foreach (var path in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        yield return Path.Combine(AppPaths.CodexHome, ".sandbox-bin", "codex.exe");
+    }
+
+    private static IEnumerable<string> EnumerateDesktopRuntimes()
+    {
+        var binDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenAI", "Codex", "bin");
+        try
         {
-            yield return Path.Combine(path.Trim(), "codex.exe");
+            return Directory.Exists(binDirectory)
+                ? new DirectoryInfo(binDirectory).GetDirectories()
+                    .OrderByDescending(directory => directory.LastWriteTimeUtc)
+                    .Select(directory => Path.Combine(directory.FullName, "codex.exe"))
+                    .ToArray()
+                : [];
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 }
